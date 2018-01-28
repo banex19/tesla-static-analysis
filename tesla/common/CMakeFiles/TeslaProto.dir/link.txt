@@ -1,2 +1,0 @@
-/usr/bin/ar qc libTeslaProto.a  CMakeFiles/TeslaProto.dir/tesla.pb.cc.o
-/usr/bin/ranlib libTeslaProto.a

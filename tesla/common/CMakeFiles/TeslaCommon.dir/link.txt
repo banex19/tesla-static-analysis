@@ -1,2 +1,0 @@
-/usr/bin/ar qc libTeslaCommon.a  CMakeFiles/TeslaCommon.dir/Arguments.cpp.o CMakeFiles/TeslaCommon.dir/Automaton.cpp.o CMakeFiles/TeslaCommon.dir/Debug.cpp.o CMakeFiles/TeslaCommon.dir/FSMBuilder.cpp.o CMakeFiles/TeslaCommon.dir/Manifest.cpp.o CMakeFiles/TeslaCommon.dir/Names.cpp.o CMakeFiles/TeslaCommon.dir/Protocol.cpp.o CMakeFiles/TeslaCommon.dir/State.cpp.o CMakeFiles/TeslaCommon.dir/SuperFastHash.c.o CMakeFiles/TeslaCommon.dir/Transition.cpp.o
-/usr/bin/ranlib libTeslaCommon.a

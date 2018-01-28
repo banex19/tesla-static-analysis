@@ -1,1 +1,0 @@
-/usr/bin/newclang++   -std=c++14 -pthread -ltinfo -fPIC -fvisibility-inlines-hidden -std=c++11 -w -ffunction-sections -fdata-sections -Wall -fvisibility=hidden -D GOOGLE_PROTOBUF_NO_RTTI -std=c++14 -g   CMakeFiles/match.cpp.test.dir/match.cpp.o  -o match.cpp.test -rdynamic ../src/libtesla.so -lpthread -Wl,-rpath,/home/daniele/tesla/tesla-static-analysis/libtesla/src 
