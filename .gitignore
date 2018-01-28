@@ -5,8 +5,11 @@ doxygen
 *.pyc
 newb
 CMakeCache.txt
-*.dir/
+*.dir
 CMakeFiles
+*.ll
+*.o
+
 
 CMakeScripts
 
