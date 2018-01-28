@@ -307,7 +307,7 @@ void tesla::UpdateState(const Automaton& A, uint32_t Symbol, Value *Key,
   Type *KeyStar = PointerType::getUnqual(KeyType(M));
   Type *Void = Type::getVoidTy(Ctx);
 
-  auto *Fn = dyn_cast<Function>(M.getOrInsertFunction(
+ /* auto *Fn = dyn_cast<Function>(M.getOrInsertFunction(
       "tesla_update_state",
       Void,       // return type
       Int32,      // context (global vs per-thread)
@@ -315,7 +315,17 @@ void tesla::UpdateState(const Automaton& A, uint32_t Symbol, Value *Key,
       Int32,      // symbol/event ID
       KeyStar,    // pattern
       NULL
-  ));
+  )); */
+
+   auto *Fn = dyn_cast<Function>(M.getOrInsertFunction(
+      "tesla_update_state",
+      Void,       // return type
+      Int32,      // context (global vs per-thread)
+      AutoStar,   // automaton description
+      Int32,      // symbol/event ID
+      KeyStar     // pattern
+  )); 
+
 
   std::vector<Value*> Args;
   Args.push_back(TeslaContext(A.getAssertion().context(), Ctx));
@@ -339,13 +349,20 @@ StructType* tesla::TransitionType(Module& M) {
   LLVMContext& Ctx = M.getContext();
   Type *IntType = Type::getInt32Ty(Ctx);
 
-  return StructType::create(Name,
+ /* return StructType::create(Name,
                             IntType,  // from state
                             IntType,  // mask on from's name
                             IntType,  // to state
                             IntType,  // mask on to's name
                             IntType,  // explicit instruction to fork
-                            NULL);
+                            NULL); */
+  return StructType::create(Name,
+                            IntType,  // from state
+                            IntType,  // mask on from's name
+                            IntType,  // to state
+                            IntType,  // mask on to's name
+                            IntType  // explicit instruction to fork
+                            );
 }
 
 StructType* tesla::TransitionSetType(Module& M) {
@@ -360,10 +377,14 @@ StructType* tesla::TransitionSetType(Module& M) {
   Type *IntTy = IntegerType::get(Ctx, 32);
   Type *TransStar = PointerType::getUnqual(TransitionType(M));
 
-  return StructType::create(Name,
+ /* return StructType::create(Name,
                             IntTy,      // number of possible transitions
                             TransStar,  // transition array
-                            NULL);
+                            NULL); */
+    return StructType::create(Name,
+                            IntTy,      // number of possible transitions
+                            TransStar  // transition array
+                            );
 }
 
 StructType* tesla::StructAutomatonType(Module& M) {
@@ -384,14 +405,22 @@ StructType* tesla::StructAutomatonType(Module& M) {
 
   Type *LifetimePtr = PointerType::getUnqual(LifetimeType(M));
 
-  return StructType::create(StructTypeName,
+  /*return StructType::create(StructTypeName,
                             CharPtr,    // name
                             Int,        // alphabet_size
                             TransPtr,   // transitions
                             CharPtr,    // description
                             CharPtrPtr, // symbol_names
                             LifetimePtr,// lifetime
-                            NULL);
+                            NULL); */
+  return StructType::create(StructTypeName,
+                            CharPtr,    // name
+                            Int,        // alphabet_size
+                            TransPtr,   // transitions
+                            CharPtr,    // description
+                            CharPtrPtr, // symbol_names
+                            LifetimePtr // lifetime
+                            ); 
 }
 
 StructType* tesla::LifetimeType(Module& M)
@@ -402,10 +431,14 @@ StructType* tesla::LifetimeType(Module& M)
     return T;
 
   StructType *EventTy = LifetimeEventType(M);
-  return StructType::create(Name,
+  /*return StructType::create(Name,
                             EventTy,    // beginning
                             EventTy,    // end
-                            NULL);
+                            NULL); */
+  return StructType::create(Name,
+                            EventTy,    // beginning
+                            EventTy    // end
+                            );
 }
 
 StructType* tesla::LifetimeEventType(Module& M)
@@ -422,11 +455,16 @@ StructType* tesla::LifetimeEventType(Module& M)
   Type *CharPtr = PointerType::getUnqual(IntegerType::get(Ctx, 8));
   Type *Int32 = IntegerType::get(Ctx, 32);
 
-  return StructType::create(Name,
+  /*return StructType::create(Name,
                             CharPtr,    // opaque representation
                             Int32,      // representation length
                             Int32,      // pre-computed hash
-                            NULL);
+                            NULL); */
+  return StructType::create(Name,
+                            CharPtr,    // opaque representation
+                            Int32,      // representation length
+                            Int32      // pre-computed hash
+                            ); 
 }
 
 
@@ -456,11 +494,11 @@ BasicBlock* tesla::CreateInstrPreamble(Module& Mod, Function *F,
   Builder.CreateCondBr(Debugging, PrintBB, Entry);
 
   string FormatStr(Prefix.str());
-  for (auto& Arg : F->getArgumentList()) FormatStr += Format(Arg.getType());
+  for (auto& Arg : F->args()) FormatStr += Format(Arg.getType());
   FormatStr += "\n";
 
   ArgVector PrintfArgs(1, Builder.CreateGlobalStringPtr(FormatStr));
-  for (auto& Arg : F->getArgumentList()) PrintfArgs.push_back(&Arg);
+  for (auto& Arg : F->args()) PrintfArgs.push_back(&Arg);
 
   IRBuilder<> PrintBuilder(PrintBB);
   PrintBuilder.CreateCall(Printf(Mod, PrintBuilder), PrintfArgs);

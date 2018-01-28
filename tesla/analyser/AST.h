@@ -52,7 +52,7 @@ namespace tesla {
 class TeslaConsumer : public clang::ASTConsumer {
 public:
   TeslaConsumer(llvm::StringRef InFilename, llvm::StringRef OutFilename);
-  void HandleTranslationUnit(clang::ASTContext &Context);
+  virtual void HandleTranslationUnit(clang::ASTContext &Context);
 
 private:
   llvm::StringRef InFile;

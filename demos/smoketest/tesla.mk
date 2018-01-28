@@ -32,7 +32,7 @@ OBJS=		${TESLA_OBJS}
 
 # Graph the .tesla file.
 tesla.dot: .tesla
-	${GRAPH} -o $@ ${GRAPH_FLAGS} $<
+	${GRAPH} -o $@ ${GRAPH_FLAGS} 
 
 # Optional PDF-ification of the .dot file.
 .dot.pdf:

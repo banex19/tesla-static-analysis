@@ -35,11 +35,15 @@
 #include <clang/Frontend/FrontendActions.h>
 #include <clang/Tooling/CompilationDatabase.h>
 #include <clang/Tooling/Tooling.h>
+#include <clang/Tooling/CommonOptionsParser.h>
 
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/PrettyStackTrace.h>
 
+
+using namespace clang::driver;
 using namespace clang::tooling;
+using namespace clang;
 using namespace llvm;
 using namespace tesla;
 
@@ -74,18 +78,21 @@ int main(int argc, const char **argv) {
 
   argv = args.data();
 
+  std::string errorMsg;
+
   std::unique_ptr<CompilationDatabase> Compilations(
-    FixedCompilationDatabase::loadFromCommandLine(argc, argv));
+    FixedCompilationDatabase::loadFromCommandLine(argc, argv, errorMsg));
 
   if (!Compilations)
     panic(
-        "Need compilation options, e.g. tesla-analyser foo.c -- -I ../include");
+      "Need compilation options, e.g. tesla-analyser foo.c -- -I ../include");
 
   cl::ParseCommandLineOptions(argc, argv);
 
   std::unique_ptr<TeslaActionFactory> Factory(new TeslaActionFactory(OutputFile));
 
   ClangTool Tool(*Compilations, SourcePaths);
+
   return Tool.run(Factory.get());
 }
-
+ 

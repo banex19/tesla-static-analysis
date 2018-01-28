@@ -6,4 +6,6 @@ target_link_libraries(tesla-extract
   TeslaCommon
 )
 
+target_link_libraries(tesla-extract LLVMSupport)
+
 install(TARGETS tesla-extract DESTINATION bin)

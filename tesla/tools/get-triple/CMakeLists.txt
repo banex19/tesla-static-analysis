@@ -1,7 +1,9 @@
 llvm_map_components_to_libnames(LLVM_LIBS support)
 
+
 add_llvm_executable(tesla-get-triple get-triple.cpp)
 target_link_libraries(tesla-get-triple ${LLVM_LIBS})
+target_link_libraries(tesla-get-triple LLVMSupport)
 
 install(TARGETS tesla-get-triple DESTINATION bin)
 

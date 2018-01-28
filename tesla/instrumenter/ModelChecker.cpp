@@ -105,7 +105,6 @@ bool Z3TraceChecker::match_arg(const Value* x, const Value* y) const
 
 bool Z3TraceChecker::check_function(const CallInst& CI, const tesla::FunctionEvent& expr) const
 {
-  using namespace std::string_literals;
 
   auto called_or_cast = calledOrCastFunction(&CI);
   if(!called_or_cast) {
@@ -119,17 +118,17 @@ bool Z3TraceChecker::check_function(const CallInst& CI, const tesla::FunctionEve
     return false;
   }
 
-  if(has_prefix(stubbed_name, "__entry_stub"s) && 
+  if(has_prefix(stubbed_name, std::string("__entry_stub")) && 
      expr.direction() != FunctionEvent_Direction_Entry) {
     return false;
   }
 
-  if(has_prefix(stubbed_name, "__return_stub"s) && 
+  if(has_prefix(stubbed_name, std::string("__return_stub")) && 
      expr.direction() != FunctionEvent_Direction_Exit) {
     return false;
   }
 
-  if(has_prefix(stubbed_name, "__return_stub"s) &&
+  if(has_prefix(stubbed_name, std::string("__return_stub")) &&
      expr.has_expectedreturnvalue()) {
 
     auto found = constraints_.find(&CI);

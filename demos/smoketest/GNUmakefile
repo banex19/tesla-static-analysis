@@ -10,11 +10,11 @@ TESLA_BUILD_DIR?=${TESLA_SOURCE_DIR}/build
 # Normal consumers don't need to do this.
 TRIPLE=		$(shell tesla get-triple)
 
-CC=		clang
+CC=		newclang
 LLC=		llc
 
 REVISION:=	$(shell ./revision.sh)
-CFLAGS+=	-Wall -D REVISION="${REVISION}" \
+CFLAGS+=	-g  -Wall -D REVISION="${REVISION}" \
 		-Wno-deprecated-declarations	# DES_set_key() is deprecated
 LIBS+=		-l crypto -l tesla
 
@@ -36,8 +36,8 @@ clean:
 #
 
 # Just in case TESLA isn't installed to /usr/local:
-CFLAGS+=	-I ${TESLA_SOURCE_DIR}/include
-LIBS+=		-L ${TESLA_BUILD_DIR}/libtesla/src
+CFLAGS+=	-I ${TESLA_SOURCE_DIR}/include -I /home/daniele/llvm/build/lib/clang/6.0.0/include
+LIBS+=		-L ${TESLA_BUILD_DIR}/
 
 include tesla.mk
 

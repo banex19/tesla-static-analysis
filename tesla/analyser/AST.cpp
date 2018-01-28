@@ -47,21 +47,23 @@ using namespace clang;
 using namespace tesla;
 using std::string;
 
+
 llvm::cl::opt<bool> UseTextFormat(
   "S", llvm::cl::desc("Use textual (rather than binary) TESLA representation"));
 
-
 namespace tesla {
 
-TeslaConsumer::TeslaConsumer(llvm::StringRef In, llvm::StringRef Out)
+  TeslaConsumer::TeslaConsumer(llvm::StringRef In, llvm::StringRef Out)
   : InFile(In), OutFile(Out)
-{
-}
+  {
+  }
 
-void TeslaConsumer::HandleTranslationUnit(ASTContext &Context) {
-  TeslaVisitor Visitor(InFile, &Context);
+  void TeslaConsumer::HandleTranslationUnit(ASTContext &Context) {
+   TeslaVisitor Visitor {InFile, &Context};
 
-  if (!Visitor.TraverseDecl(Context.getTranslationUnitDecl()))
+   Visitor.TraverseDecl( Context.getTranslationUnitDecl());
+
+   if (!Visitor.TraverseDecl(Context.getTranslationUnitDecl()))
     panic("error analysing '" + InFile + "'");
 
   std::error_code ErrorInfo;
@@ -83,12 +85,13 @@ void TeslaConsumer::HandleTranslationUnit(ASTContext &Context) {
   else
     Result.SerializeToString(&ProtobufText);
 
-  Out << ProtobufText;
+  Out << ProtobufText; 
 }
 
 
+
 std::unique_ptr<ASTConsumer> TeslaAction::CreateASTConsumer(CompilerInstance &C,
-                                            llvm::StringRef InFile)
+  llvm::StringRef InFile)
 {
   return std::unique_ptr<ASTConsumer>(new TeslaConsumer(InFile, OutFile));
 }

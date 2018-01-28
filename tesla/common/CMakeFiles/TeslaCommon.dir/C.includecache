@@ -1,0 +1,20 @@
+#IncludeRegexLine: ^[ 	]*#[ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/daniele/tesla/tesla-static-analysis/tesla/common/SuperFastHash.c
+SuperFastHash.h
+/home/daniele/tesla/tesla-static-analysis/tesla/common/SuperFastHash.h
+unistd.h
+-
+
+/home/daniele/tesla/tesla-static-analysis/tesla/common/SuperFastHash.h
+sys/cdefs.h
+-
+stdint.h
+-
+

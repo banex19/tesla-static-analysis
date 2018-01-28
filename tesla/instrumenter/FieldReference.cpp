@@ -278,10 +278,9 @@ void FieldInstrumentation::AppendInstrumentation(
 
   // The instrumentation function should be passed three parameters:
   // the struct, the new value and a pointer to the field.
-  auto& Params = InstrFn->getArgumentList();
-  assert(Params.size() == 3);
+  assert(InstrFn->arg_size()== 3);
 
-  auto i = Params.begin();
+  auto i = InstrFn->arg_begin();
   llvm::Argument *Struct = &*i++;
   llvm::Argument *NewValue = &*i++;
   llvm::Argument *FieldPtr = &*i++;

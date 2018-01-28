@@ -18,7 +18,7 @@ include(cmake/CopyFiles.cmake)
 
 
 # Include LLVM configuration:
-find_package(LLVM 4.0
+find_package(LLVM 
   CONFIG REQUIRED
 )
 set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/tesla)
@@ -76,6 +76,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D GOOGLE_PROTOBUF_NO_RTTI")
 # TESLA uses C++14
 #
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99")
 
 #
 # Global include directories for all of TESLA:

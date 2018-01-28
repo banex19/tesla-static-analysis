@@ -29,6 +29,8 @@ if [ ! $1 ]; then
 	exit 1
 fi
 
+BASE_DIR=`dirname "$0"`
+
 TOOL_NAME="tesla-$1"
 shift
 
@@ -52,9 +54,9 @@ if [ "$TOOL_NAME" = "tesla-instrument" ] || [ "$TOOL_NAME" = "tesla-static" ]; t
   fi
 
   if [ "$TOOL_NAME" = "tesla-static" ]; then
-    best_opt -load "$LIB" "-$TOOL_NAME" "$@" > /dev/null
+    best_opt -load "$BASE_DIR/$LIB" "-$TOOL_NAME" "$@" > /dev/null
   else
-    best_opt -load "$LIB" "-$TOOL_NAME" "$@"
+    best_opt -load "$BASE_DIR/$LIB" "-$TOOL_NAME" "$@"
   fi
 
   exit $?

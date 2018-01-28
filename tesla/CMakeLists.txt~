@@ -1,0 +1,68 @@
+cmake_minimum_required(VERSION 2.6)
+project(TESLA)
+
+find_package(FSM REQUIRED)
+
+#
+# Protocol buffers:
+#
+find_package(Protobuf REQUIRED)
+include_directories(${PROTOBUF_INCLUDE_DIRS})
+
+# Declare the existence of protobuf-generated files (the actual generation is
+# described in the 'common' subdirectory, but we must declare them here).
+protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS tesla.proto)
+
+
+#
+# LLVM configuration:
+#
+
+# Explicitly add /usr/local/share/llvm/cmake to the CMake module path; by default,
+# it seems like AddLLVM wants to find things in the build directory (!).
+set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" "${LLVM_PREFIX}/share/llvm/cmake")
+
+add_definitions(${LLVM_DEFINITIONS})
+include_directories(${LLVM_INCLUDE_DIRS})
+link_directories(${LLVM_LIBRARY_DIRS})
+
+# LLVM libraries that we need:
+llvm_map_components_to_libnames(LLVM_LIBS analysis support bitreader core
+  irreader option codegen transformutils scalaropts)
+
+set(LLVM_LIBS "LLVMSupport;LLVMAnalysis;LLVMBitReader;LLVMIRReader;LLVMCore;LLVMOption;LLVMCodeGen;LLVMTransformUtils;LLVMScalarOpts;LLVMX86CodeGen")
+#set(LLVM_LIBS "LLVMAArch64AsmParser;LLVMAArch64AsmPrinter;LLVMAArch64CodeGen;LLVMAArch64Desc;LLVMAArch64Disassembler;LLVMAArch64Info;LLVMAArch64Utils;LLVMAMDGPUAsmParser;LLVMAMDGPUAsmPrinter;LLVMAMDGPUCodeGen;LLVMAMDGPUDesc;LLVMAMDGPUDisassembler;LLVMAMDGPUInfo;LLVMAMDGPUUtils;LLVMAnalysis;LLVMARMAsmParser;LLVMARMAsmPrinter;LLVMARMCodeGen;LLVMARMDesc;LLVMARMDisassembler;LLVMARMInfo;LLVMARMUtils;LLVMAsmParser;LLVMAsmPrinter;LLVMBinaryFormat;LLVMBitReader;LLVMBitWriter;LLVMBPFAsmParser;LLVMBPFAsmPrinter;LLVMBPFCodeGen;LLVMBPFDesc;LLVMBPFDisassembler;LLVMBPFInfo;LLVMCFIVerify;LLVMCodeGen;LLVMCore;LLVMCoroutines;LLVMCoverage;LLVMDebugInfoCodeView;LLVMDebugInfoDWARF;LLVMDebugInfoMSF;LLVMDebugInfoPDB;LLVMDemangle;LLVMDlltoolDriver;LLVMExecutionEngine;LLVMFuzzMutate;LLVMGlobalISel;LLVMHexagonAsmParser;LLVMHexagonCodeGen;LLVMHexagonDesc;LLVMHexagonDisassembler;LLVMHexagonInfo;LLVMInstCombine;LLVMInstrumentation;LLVMInterpreter;LLVMipo;LLVMIRReader;LLVMLanaiAsmParser;LLVMLanaiAsmPrinter;LLVMLanaiCodeGen;LLVMLanaiDesc;LLVMLanaiDisassembler;LLVMLanaiInfo;LLVMLibDriver;LLVMLineEditor;LLVMLinker;LLVMLTO;LLVMMC;LLVMMCDisassembler;LLVMMCJIT;LLVMMCParser;LLVMMipsAsmParser;LLVMMipsAsmPrinter;LLVMMipsCodeGen;LLVMMipsDesc;LLVMMipsDisassembler;LLVMMipsInfo;LLVMMIRParser;LLVMMSP430AsmPrinter;LLVMMSP430CodeGen;LLVMMSP430Desc;LLVMMSP430Info;LLVMNVPTXAsmPrinter;LLVMNVPTXCodeGen;LLVMNVPTXDesc;LLVMNVPTXInfo;LLVMObjCARCOpts;LLVMObject;LLVMObjectYAML;LLVMOption;LLVMOrcJIT;LLVMPasses;LLVMPowerPCAsmParser;LLVMPowerPCAsmPrinter;LLVMPowerPCCodeGen;LLVMPowerPCDesc;LLVMPowerPCDisassembler;LLVMPowerPCInfo;LLVMProfileData;LLVMRuntimeDyld;LLVMScalarOpts;LLVMSelectionDAG;LLVMSparcAsmParser;LLVMSparcAsmPrinter;LLVMSparcCodeGen;LLVMSparcDesc;LLVMSparcDisassembler;LLVMSparcInfo;LLVMSupport;LLVMSymbolize;LLVMSystemZAsmParser;LLVMSystemZAsmPrinter;LLVMSystemZCodeGen;LLVMSystemZDesc;LLVMSystemZDisassembler;LLVMSystemZInfo;LLVMTableGen;LLVMTarget;LLVMTestingSupport;LLVMTransformUtils;LLVMVectorize;LLVMWindowsManifest;LLVMX86AsmParser;LLVMX86AsmPrinter;LLVMX86CodeGen;LLVMX86Desc;LLVMX86Disassembler;LLVMX86Info;LLVMX86Utils;LLVMXCoreAsmPrinter;LLVMXCoreCodeGen;LLVMXCoreDesc;LLVMXCoreDisassembler;LLVMXCoreInfo;LLVMXRay")
+
+
+set(LLVM_LINK_COMPONENTS ${LLVM_TARGETS_TO_BUILD})
+
+# Work out of the LLVM source/build trees if LLVM is not installed.
+include_directories("${LLVM_SRC}/include" "${LLVM_OBJ}/include")
+link_directories("${LLVM_OBJ}/lib/")
+
+link_directories("/usr/local/lib")
+
+# Use LLVM's CFLAGS and CXXFLAGS, but filter out optimisations and -DNDEBUG.
+exec_program(${CMAKE_LLVM_CONFIG} ARGS --cflags   OUTPUT_VARIABLE LLVM_C)
+exec_program(${CMAKE_LLVM_CONFIG} ARGS --cxxflags OUTPUT_VARIABLE LLVM_CXX)
+string(REGEX REPLACE "(.*)-O[0-9] -DNDEBUG(.*)" "\\1\\2" LLVM_C ${LLVM_C})
+string(REGEX REPLACE "(.*)-O[0-9] -DNDEBUG(.*)" "\\1\\2" LLVM_CXX ${LLVM_CXX})
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${LLVM_C}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXX_FLAGS}")
+
+# Important CXXFLAGS that llvm-config --cxxflags doesn't give us:
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-nested-anon-types")
+
+
+#
+# Finally, actually specify the TESLA subdirectories:
+#
+include_directories(common)
+include_directories("${CMAKE_CURRENT_BINARY_DIR}/common")
+
+add_subdirectory(analyser)
+add_subdirectory(common)
+add_subdirectory(instrumenter)
+add_subdirectory(test)
+add_subdirectory(tools)

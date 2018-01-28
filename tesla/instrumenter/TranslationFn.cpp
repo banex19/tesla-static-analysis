@@ -165,14 +165,13 @@ EventTranslator TranslationFn::AddInstrumentation(StringRef Label,
   // Match instrumented values against the given pattern, saving variables
   // to a struct tesla_key.
   //
-  Function::ArgumentListType& InstrumentedValues = InstrFn->getArgumentList();
-  assert(Patterns.size() == InstrumentedValues.size());
+  assert(Patterns.size() == InstrFn->arg_size());
 
   vector<Value*> KeyArgs(TESLA_KEY_SIZE, NULL);
   IRBuilder<> Builder(Instr);
 
   size_t i = 0;
-  for (Value& Val : InstrumentedValues) {
+  for (Value& Val : InstrFn->args()) {
     const Argument& Pattern = Patterns[i];
 
     Match(Label + ":match:" + Twine(i), Instr, Pattern, &Val);
@@ -272,12 +271,12 @@ BasicBlock* TranslationFn::CreatePreamble(InstrContext& InstrCtx,
   Builder.CreateCondBr(Debugging, PrintBB, Entry);
 
   string FormatStr(Prefix.str());
-  for (Value& Arg : InstrFn->getArgumentList())
+  for (Value& Arg : InstrFn->args())
     FormatStr += Format(Arg.getType());
   FormatStr += "\n";
 
   ArgVector PrintfArgs(1, Builder.CreateGlobalStringPtr(FormatStr));
-  for (Value& Arg : InstrFn->getArgumentList()) PrintfArgs.push_back(&Arg);
+  for (Value& Arg : InstrFn->args()) PrintfArgs.push_back(&Arg);
 
   IRBuilder<> PrintBuilder(PrintBB);
   PrintBuilder.CreateCall(InstrCtx.Printf, PrintfArgs);

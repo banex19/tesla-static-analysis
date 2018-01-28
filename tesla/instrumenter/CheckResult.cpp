@@ -6,6 +6,8 @@
 
 #include <llvm/Support/raw_ostream.h>
 
+
+
 static bool is_assert(const CallInst* ci)
 {
   return calledOrCastFunction(ci)->getName().str() == tesla::INLINE_ASSERTION; 
@@ -13,22 +15,20 @@ static bool is_assert(const CallInst* ci)
 
 static bool is_entry(const CallInst* ci)
 {
-  using namespace std::string_literals;
   auto called_or_cast = calledOrCastFunction(ci);
   if(!called_or_cast) {
     return false;
   }
-  return has_prefix(called_or_cast->getName().str(), "__entry_stub_"s);
+  return has_prefix(called_or_cast->getName().str(), std::string("__entry_stub_"));
 };
 
 static bool is_return(const CallInst* ci)
 {
-  using namespace std::string_literals;
   auto called_or_cast = calledOrCastFunction(ci);
   if(!called_or_cast) {
     return false;
   }
-  return has_prefix(called_or_cast->getName().str(), "__return_stub_"s);
+  return has_prefix(called_or_cast->getName().str(), std::string("__return_stub_"));
 };
 
 CheckResult::CheckResult(Status r, const Z3TraceChecker c, 
@@ -108,7 +108,6 @@ void CheckResult::dump_many(const std::vector<CheckResult>& results)
 
 std::string CheckResult::pretty_event(const CallInst* ci)
 {
-  using namespace std::string_literals;
   std::stringstream ss;
 
   if(is_assert(ci)) {

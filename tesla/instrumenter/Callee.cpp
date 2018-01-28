@@ -65,7 +65,7 @@ namespace {
   class SelectorTypesFinder : public InstVisitor<SelectorTypesFinder> {
     Module *Mod;
     FunctionType *FTy;
-    AttributeSet AS;
+    AttributeList AS;
     unsigned MDKind;
     const std::string &SelName;
     public:
@@ -94,7 +94,7 @@ namespace {
       AS = CS.getAttributes();
     }
     void visitModule(Module &M) { Mod = &M; }
-    FunctionType *getFunctionType(Module &M, AttributeSet &Attrs) {
+    FunctionType *getFunctionType(Module &M, AttributeList &Attrs) {
       if (!FTy) {
         visit(M);
       }
@@ -125,7 +125,7 @@ class ObjCInstrumentation
   //bool SuppressDebugInstr;
 
 
-  FunctionType *typesForSelector(const std::string &Sel, AttributeSet &AS) {
+  FunctionType *typesForSelector(const std::string &Sel, AttributeList &AS) {
     auto &Type = SelTypes[Sel];
     if (Type)
       return Type;
@@ -144,7 +144,7 @@ class ObjCInstrumentation
     return ".tesla_objc_hook_" + ClassName + '_' + SelName + '_' + AutomatonName;
   }
 
-  void createCallLoop(ArrayRef<Value*> Args, AttributeSet &AS,
+  void createCallLoop(ArrayRef<Value*> Args, AttributeList &AS,
       BasicBlock *Entry, BasicBlock *Loop, BasicBlock *Exit, Value *List) {
 
     IRBuilder<> B(Entry);
@@ -164,7 +164,7 @@ class ObjCInstrumentation
   /// Creates the instrumentation function, which will be invoked by the
   /// runtime whenever the selector is matched.
   void createIntrumentationFunction(const std::string &SelName,
-      FunctionType *MethodType, AttributeSet &AS) {
+      FunctionType *MethodType, AttributeList &AS) {
     std::string HookName = interpositionName(SelName);
     Function *Fn = Mod.getFunction(HookName);
     if (Fn) return;
@@ -176,9 +176,12 @@ class ObjCInstrumentation
     Fn->setLinkage(GlobalValue::PrivateLinkage);
     // Now make sure that we try to register it.
     // Create the registration function
+   /* Function *RegisterFn = cast<Function>(
+        Mod.getOrInsertFunction(interpositionName(SelName,
+          "_register"), Type::getVoidTy(Ctx), NULL)); */
     Function *RegisterFn = cast<Function>(
         Mod.getOrInsertFunction(interpositionName(SelName,
-          "_register"), Type::getVoidTy(Ctx), NULL));
+          "_register"), Type::getVoidTy(Ctx)));
     IRBuilder<> B(BasicBlock::Create(Ctx, "entry", RegisterFn));
     // Create a global for the selector name
     Constant *C =
@@ -249,9 +252,11 @@ class ObjCInstrumentation
       FunctionType::get(Type::getVoidTy(Ctx),
           ArrayRef<Type*>(MethodType->param_begin(), MethodType->param_end()),
           false);
+
     StructType *EnterListTy = StructType::create(Ctx);
-    EnterListTy->setBody(PointerType::getUnqual(EnterListTy),
-        PointerType::getUnqual(EnterFnTy), NULL);
+   // EnterListTy->setBody(PointerType::getUnqual(EnterListTy), PointerType::getUnqual(EnterFnTy), NULL);
+    EnterListTy->setBody(PointerType::getUnqual(EnterListTy), PointerType::getUnqual(EnterFnTy));
+
     FunctionType *ExitFnTy;
     if (isVoidRet)
       ExitFnTy = EnterFnTy;
@@ -262,8 +267,9 @@ class ObjCInstrumentation
       ExitFnTy = FunctionType::get(Type::getVoidTy(Ctx), Types, false);
     }
     StructType *ExitListTy = StructType::create(Ctx);
-    ExitListTy->setBody(PointerType::getUnqual(ExitListTy),
-        PointerType::getUnqual(ExitFnTy), NULL);
+
+    // ExitListTy->setBody(PointerType::getUnqual(ExitListTy), PointerType::getUnqual(ExitFnTy), NULL);
+    ExitListTy->setBody(PointerType::getUnqual(ExitListTy), PointerType::getUnqual(ExitFnTy));
 
     GlobalVariable *EnterList =
       new GlobalVariable(Mod, PointerType::getUnqual(EnterListTy), false,
@@ -288,7 +294,7 @@ class ObjCInstrumentation
       Args.push_back(&*I);
     }
     AttributeSet RetAttrs = AS.getRetAttributes();
-    AS = AS.removeAttributes(Ctx, AttributeSet::ReturnIndex, RetAttrs);
+    AS = AS.removeAttributes(Ctx, AttributeList::ReturnIndex, RetAttrs);
 
     createCallLoop(Args, AS, Entry, EnterLoop, Call, EnterList);
 
@@ -340,11 +346,16 @@ public:
     Type *HookArgTy[] = { IdTy, SelTy, IMPTy, PtrTy, PtrTy };
     HookTy = FunctionType::get(IMPTy, HookArgTy, /* isVarArgs */ false);
 
-    SelRegisterName =
+   /* SelRegisterName =
       Mod.getOrInsertFunction("sel_registerName", SelTy, PtrTy, NULL);
     ObjCRegisterHook =
       Mod.getOrInsertFunction("objc_registerTracingHook", Type::getInt32Ty(Ctx),
-          SelTy, PointerType::getUnqual(HookTy), NULL);
+          SelTy, PointerType::getUnqual(HookTy), NULL); */
+    SelRegisterName =
+      Mod.getOrInsertFunction("sel_registerName", SelTy, PtrTy);
+    ObjCRegisterHook =
+      Mod.getOrInsertFunction("objc_registerTracingHook", Type::getInt32Ty(Ctx),
+          SelTy, PointerType::getUnqual(HookTy));
   }
 
   bool instrument(const Automaton &A, const FunctionEvent &FnEvent,
@@ -360,7 +371,7 @@ public:
       case FunctionEvent::ObjCInstanceMessage:
         SelName = FnEvent.function().name();
     }
-    AttributeSet AS;
+    AttributeList AS;
     FunctionType *FTy = typesForSelector(SelName, AS);
     if (!FTy) return false;
 
@@ -397,9 +408,12 @@ public:
         cast<PointerType>(cast<PointerType>(List->getType())->getElementType())
           ->getElementType();
 
-      Constant *ListInit = ConstantStruct::get(cast<StructType>(ListTy),
+     /* Constant *ListInit = ConstantStruct::get(cast<StructType>(ListTy),
         ConstantPointerNull::get(PointerType::getUnqual(ListTy)),
-        Fn, NULL);
+        Fn, NULL); */
+        Constant *ListInit = ConstantStruct::get(cast<StructType>(ListTy),
+        ConstantPointerNull::get(PointerType::getUnqual(ListTy)),
+        Fn); 
 
       GlobalVariable *ListEntry =
         new GlobalVariable(Mod, ListTy, false,
@@ -555,7 +569,7 @@ TranslationFn* FnCalleeInstrumenter::GetOrCreateInstr(Function *F,
   // when we enter or exit this (callee-instrumented) function.
   //
   ArgVector Args;   // can't use (begin,end) constructor; need arg *addresses*
-  for (auto &Arg : F->getArgumentList())
+  for (auto &Arg : F->args())
     Args.push_back(&Arg);
 
   // TODO: add Objective-C receiver

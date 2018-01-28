@@ -211,7 +211,7 @@ Constant* InstrContext::BuildAutomatonDescription(const Automaton *A) {
   //
   // Create the global variable and its (constant) initialiser.
   //
-  Constant *Init = ConstantStruct::get(AutomatonTy,
+ /* Constant *Init = ConstantStruct::get(AutomatonTy,
                                        ConstStr(Name, Name + "_name"),
                                        AlphabetSize,
                                        CleanupSymbol,
@@ -219,7 +219,15 @@ Constant* InstrContext::BuildAutomatonDescription(const Automaton *A) {
                                        Description,
                                        SymbolNames,
                                        Lifetime,
-                                       NULL);
+                                       NULL); */
+  Constant *Init = ConstantStruct::get(AutomatonTy,
+                                       ConstStr(Name, Name + "_name"),
+                                       AlphabetSize,
+                                       CleanupSymbol,
+                                       TransitionsArray,
+                                       Description,
+                                       SymbolNames,
+                                       Lifetime); 
 
   GlobalVariable *Automaton
     = new GlobalVariable(M, AutomatonTy, true,
@@ -257,7 +265,8 @@ Constant* InstrContext::BuildLifetimeEvent(const Transition& T) {
 
   StructType *Ty = LifetimeEventTy;
 
-  return ConstantStruct::get(Ty, Repr, Length, Hash, NULL);
+ // return ConstantStruct::get(Ty, Repr, Length, Hash, NULL);
+    return ConstantStruct::get(Ty, Repr, Length, Hash);
 }
 
 
@@ -299,11 +308,15 @@ Constant* InstrContext::BuildLifetime(const Automaton::Lifetime& Lifetime) {
   if (Existing)
     return Existing;
 
-  Constant *Initialiser = ConstantStruct::get(LifetimeTy,
+ /* Constant *Initialiser = ConstantStruct::get(LifetimeTy,
                                               BuildLifetimeEvent(Sunrise),
                                               BuildLifetimeEvent(Sunset),
                                               ConstStr(Name),
-                                              NULL);
+                                              NULL); */
+    Constant *Initialiser = ConstantStruct::get(LifetimeTy,
+                                              BuildLifetimeEvent(Sunrise),
+                                              BuildLifetimeEvent(Sunset),
+                                              ConstStr(Name));
 
   return new GlobalVariable(M, LifetimeTy, true,
                             GlobalVariable::InternalLinkage,
@@ -332,8 +345,9 @@ Constant* InstrContext::BuildTransitions(const TEquivalenceClass& Tr) {
                        "transition_array_" + Name);
 
   Constant *ArrayPtr = ConstArrayPointer(Array);
-
-  return ConstantStruct::get(TransitionSetTy, Count, ArrayPtr, NULL);
+ 
+ // return ConstantStruct::get(TransitionSetTy, Count, ArrayPtr, NULL);
+   return ConstantStruct::get(TransitionSetTy, Count, ArrayPtr);
 }
 
 
@@ -473,28 +487,40 @@ Constant* InstrContext::ExternalDescription(const Automaton& A) {
 
 
 Constant* InstrContext::SunriseFn() {
-  return M.getOrInsertFunction(
+ /* return M.getOrInsertFunction(
       "tesla_sunrise",
       VoidTy,           // return type
       Int32Ty,          // context (global vs per-thread)
       LifetimePtrTy,    // static lifetime description
       NULL
-  );
+  ); */
+   return M.getOrInsertFunction(
+      "tesla_sunrise",
+      VoidTy,           // return type
+      Int32Ty,          // context (global vs per-thread)
+      LifetimePtrTy    // static lifetime description
+      ); 
 }
 
 
 Constant* InstrContext::SunsetFn() {
-  return M.getOrInsertFunction(
+  /*return M.getOrInsertFunction(
       "tesla_sunset",
       VoidTy,           // return type
       Int32Ty,          // context (global vs per-thread)
       LifetimePtrTy,    // static lifetime description
       NULL
-  );
+  ); */
+  return M.getOrInsertFunction(
+      "tesla_sunset",
+      VoidTy,           // return type
+      Int32Ty,          // context (global vs per-thread)
+      LifetimePtrTy    // static lifetime description
+      ); 
 }
 
 Constant* InstrContext::UpdateStateFn() {
-  return M.getOrInsertFunction(
+ /* return M.getOrInsertFunction(
       "tesla_update_state",
       VoidTy,           // return type
       Int32Ty,          // context (global vs per-thread)
@@ -502,5 +528,13 @@ Constant* InstrContext::UpdateStateFn() {
       Int32Ty,          // symbol/event ID
       KeyPtrTy,         // pattern
       NULL
-  );
+  ); */
+  return M.getOrInsertFunction(
+      "tesla_update_state",
+      VoidTy,           // return type
+      Int32Ty,          // context (global vs per-thread)
+      AutomatonPtrTy,   // automaton description
+      Int32Ty,          // symbol/event ID
+      KeyPtrTy         // pattern
+      ); 
 }

@@ -133,10 +133,10 @@ struct tesla_lifetime_event {
 	 * This can be written by hand if needed (e.g. for testing),
 	 * but in practice we generate it from protocol buffers.
 	 */
-	const char			*tle_repr;
+	char			*tle_repr;
 
 	/** The length of @ref #tle_repr. */
-	const uint32_t			 tle_length;
+	uint32_t			 tle_length;
 
 	/**
 	 * A precomputed hash of @ref #tle_repr.
@@ -147,7 +147,7 @@ struct tesla_lifetime_event {
 	 * All clients should be consistent, however; the TESLA instrumenter
 	 * uses SuperFastHash.
 	 */
-	const uint32_t			 tle_hash;
+	uint32_t			 tle_hash;
 };
 
 
