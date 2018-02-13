@@ -1,3 +1,4 @@
+.vscode/
 build/
 build
 doxygen
@@ -9,7 +10,9 @@ CMakeCache.txt
 CMakeFiles
 *.ll
 *.o
-
+*.a
+*.so
+*.test
 
 CMakeScripts
 

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <limits>
 
 #include "Arguments.h"
 
@@ -29,7 +30,6 @@ return nullptr;
 
 std::pair<Value*, std::string> GetValueName(DbgDeclareInst* v)
 {
-
   Value* varValue = nullptr;
 
   varValue = v->getAddress();
@@ -219,7 +219,7 @@ if (!Line) {
   panic("assertion line must be a constant int");
 }
 
-Loc->set_line(Line->getLimitedValue(INT_MAX));
+Loc->set_line(Line->getLimitedValue(std::numeric_limits<int32_t>::max()));
 
 ConstantInt *Count = dyn_cast<ConstantInt>(Call->getOperand(3));
 if (!Count) {
@@ -227,7 +227,7 @@ if (!Count) {
   panic("assertion count must be a constant int");
 }
 
-Loc->set_counter(Count->getLimitedValue(INT_MAX));
+Loc->set_counter(Count->getLimitedValue(std::numeric_limits<int32_t>::max()));
 }
 
 llvm::Function* calledOrCastFunction(const llvm::CallInst *ci)
