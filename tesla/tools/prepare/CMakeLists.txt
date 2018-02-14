@@ -11,6 +11,8 @@ add_llvm_executable(tesla-prepare
 	PrepareParser.cpp
 	PrepareTool.cpp
 	PrepareVisitor.cpp
+    CacheFile.cpp
+    Utils.cpp
 )
 
 

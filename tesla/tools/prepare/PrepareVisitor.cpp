@@ -38,113 +38,118 @@
 using namespace clang;
 using std::string;
 
+namespace tesla
+{
 
-namespace tesla {
+template <class T>
+void ReportError(ASTContext &Ctx, StringRef Message, T *Subject)
+{
+    DiagnosticsEngine &Diag = Ctx.getDiagnostics();
+    // The previous usage of the diagnostics engine was incorrect - the format
+    // string passed has to be constant.
+    int DiagID = Diag.getCustomDiagID(DiagnosticsEngine::Error, "TESLA");
 
-template<class T>
-void ReportError(ASTContext& Ctx, StringRef Message, T *Subject) {
-  DiagnosticsEngine& Diag = Ctx.getDiagnostics();
-  // The previous usage of the diagnostics engine was incorrect - the format
-  // string passed has to be constant.
-  int DiagID = Diag.getCustomDiagID(DiagnosticsEngine::Error, "TESLA");
-
-  Diag.Report(Subject->getLocStart(), DiagID) << Subject->getSourceRange();
+    Diag.Report(Subject->getLocStart(), DiagID) << Subject->getSourceRange();
 }
-
 
 TeslaVisitor::TeslaVisitor(llvm::StringRef Filename, ASTContext *Context)
-  : Filename(Filename), Context(Context)
+    : Filename(Filename), Context(Context)
 {
- // llvm::errs() << "Visitor for file " << Filename.str() << "\n";
 }
 
-TeslaVisitor::~TeslaVisitor() {
-  for (auto *A : Automata)
-    delete A;
+TeslaVisitor::~TeslaVisitor()
+{
+    for (auto *A : Automata)
+        delete A;
 
-  for (auto *R : Roots)
-    delete R;
+    for (auto *R : Roots)
+        delete R;
 }
 
-bool TeslaVisitor::VisitCallExpr(CallExpr *E) {
+bool TeslaVisitor::VisitCallExpr(CallExpr *E)
+{
 
-  FunctionDecl *F = E->getDirectCallee();
-  if (!F) return true;
+    FunctionDecl *F = E->getDirectCallee();
+    if (!F)
+        return true;
 
+    StringRef FnName = F->getName();
+    if (!FnName.startswith(TESLA_BASE))
+    {
+        return true;
+    }
 
-  StringRef FnName = F->getName();
-  if (!FnName.startswith(TESLA_BASE)) 
-  {
-      return true;
-  }
+    // TESLA function calls might be inline assertions.
+    if (FnName == INLINE_ASSERTION)
+    {
+        std::unique_ptr<Parser> P(Parser::AssertionParser(E, *Context));
+        if (!P)
+            return false;
 
-  // TESLA function calls might be inline assertions.
-  if (FnName == INLINE_ASSERTION) {
-    std::unique_ptr<Parser> P(Parser::AssertionParser(E, *Context));
+        std::unique_ptr<AutomatonDescription> Description;
+        std::unique_ptr<Usage> Use;
+        if (!P->Parse(Description, Use))
+            return false;
+
+        Automata.push_back(Description.release());
+        Roots.push_back(Use.release());
+        return true;
+    }
+
+    return true;
+}
+
+bool TeslaVisitor::VisitFunctionDecl(FunctionDecl *F)
+{
+    clang::SourceManager &sm(Context->getSourceManager());
+    bool inMainFile = sm.isInMainFile(sm.getExpansionLoc(F->getLocStart()));
+
+    // Only analyse non-deleted definitions (i.e. definitions with bodies) and (should we do this?) not imported by includes.
+    if (!inMainFile || !F->isDefined() || !F->hasBody() || !F->doesThisDeclarationHaveABody())
+        return true;
+
+    functionDefinitions.insert(F->getName());
+
+    // We only parse functions that return __tesla_automaton_description*.
+    const Type *RetTy = F->getReturnType().getTypePtr();
+    if (!RetTy->isPointerType())
+        return true;
+
+    QualType Pointee = RetTy->getPointeeType();
+    auto TypeID = Pointee.getBaseTypeIdentifier();
+    if (!TypeID)
+        return true;
+
+    std::unique_ptr<Parser> P;
+    StringRef FnName = F->getName();
+
+    // Build a Parser appropriate to what we're parsing.
+    string RetTypeName = TypeID->getName();
+    if (RetTypeName == AUTOMATON_DESC)
+        P.reset(Parser::AutomatonParser(F, *Context));
+
+    else if ((RetTypeName == AUTOMATON_USAGE) && (FnName != AUTOMATON_USES))
+        P.reset(Parser::MappingParser(F, *Context));
+
+    else
+        return true;
+
+    // Actually parse the function.
     if (!P)
-      return false;
+        return false;
 
     std::unique_ptr<AutomatonDescription> Description;
     std::unique_ptr<Usage> Use;
     if (!P->Parse(Description, Use))
-      return false;
+        return false;
 
-    Automata.push_back(Description.release());
-    Roots.push_back(Use.release());
+    if (Description)
+        Automata.push_back(Description.release());
+
+    if (Use)
+        Roots.push_back(Use.release());
+
     return true;
-  }
-
-  return true;
-}
-
-
-bool TeslaVisitor::VisitFunctionDecl(FunctionDecl *F) {
-  // Only analyse non-deleted definitions (i.e. definitions with bodies).
-  if (!F->doesThisDeclarationHaveABody())
-    return true;
-
-
-  // We only parse functions that return __tesla_automaton_description*.
-  const Type *RetTy = F->getReturnType().getTypePtr();
-  if (!RetTy->isPointerType())
-    return true;
-
-  QualType Pointee = RetTy->getPointeeType();
-  auto TypeID = Pointee.getBaseTypeIdentifier();
-  if (!TypeID)
-    return true;
-
-  std::unique_ptr<Parser> P;
-  StringRef FnName = F->getName();
-
-  // Build a Parser appropriate to what we're parsing.
-  string RetTypeName = TypeID->getName();
-  if (RetTypeName == AUTOMATON_DESC)
-    P.reset(Parser::AutomatonParser(F, *Context));
-
-  else if ((RetTypeName == AUTOMATON_USAGE) && (FnName != AUTOMATON_USES))
-    P.reset(Parser::MappingParser(F, *Context));
-
-  else
-    return true;
-
-
-  // Actually parse the function.
-  if (!P)
-    return false;
-
-  std::unique_ptr<AutomatonDescription> Description;
-  std::unique_ptr<Usage> Use;
-  if (!P->Parse(Description, Use))
-    return false;
-
-  if (Description)
-    Automata.push_back(Description.release());
-
-  if (Use)
-    Roots.push_back(Use.release());
-
-  return true;
 }
 
 } // namespace tesla

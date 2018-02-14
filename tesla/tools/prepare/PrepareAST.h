@@ -33,6 +33,7 @@
 #define AST_H
 
 #include "PrepareVisitor.h"
+#include "DataStructures.h"
 
 #include <clang/AST/ASTConsumer.h>
 #include <clang/Frontend/FrontendAction.h>
@@ -40,49 +41,53 @@
 
 #include <llvm/ADT/StringRef.h>
 
+namespace clang
+{
+class ASTContext;
+class CompilerInstance;
+} // namespace clang
 
-namespace clang {
-  class ASTContext;
-  class CompilerInstance;
-}
+namespace tesla
+{
 
+class TeslaConsumer : public clang::ASTConsumer
+{
+  public:
+    TeslaConsumer(CollectedData &data, std::string InFilename, std::string OutFilename);
+    virtual void HandleTranslationUnit(clang::ASTContext &Context);
 
-namespace tesla {
-
-class TeslaConsumer : public clang::ASTConsumer {
-public:
-  TeslaConsumer(llvm::StringRef InFilename, llvm::StringRef OutFilename);
-  virtual void HandleTranslationUnit(clang::ASTContext &Context);
-
-private:
-  llvm::StringRef InFile;
-  llvm::StringRef OutFile;
+  private:
+    CollectedData &data;
+    std::string InFile;
+    std::string OutFile;
 };
 
+class TeslaAction : public clang::ASTFrontendAction
+{
+  public:
+    TeslaAction(CollectedData &data, std::string OutFilename) : data(data), OutFile(OutFilename) {}
 
-class TeslaAction : public clang::ASTFrontendAction {
-public:
-  TeslaAction(llvm::StringRef OutFilename) : OutFile(OutFilename) {}
+    std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
+        clang::CompilerInstance &Compiler, llvm::StringRef InFile);
 
-  std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
-    clang::CompilerInstance &Compiler, llvm::StringRef InFile);
-
-private:
-  llvm::StringRef OutFile;
+  private:
+    CollectedData &data;
+    std::string OutFile;
 };
 
-class TeslaActionFactory : public clang::tooling::FrontendActionFactory {
-public:
-  TeslaActionFactory(llvm::StringRef OutFilename) : OutFile(OutFilename) {}
-  ~TeslaActionFactory() {}
+class TeslaActionFactory : public clang::tooling::FrontendActionFactory
+{
+  public:
+    TeslaActionFactory(CollectedData &data, std::string OutFilename) : data(data), OutFile(OutFilename) {}
+    ~TeslaActionFactory() {}
 
-  clang::FrontendAction* create();
+    clang::FrontendAction *create();
 
-private:
-  llvm::StringRef OutFile;
+  private:
+    CollectedData &data;
+    std::string OutFile;
 };
 
-}
+} // namespace tesla
 
-#endif  // AST_H
-
+#endif // AST_H

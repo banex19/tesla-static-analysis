@@ -32,11 +32,15 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <set>
 #include <algorithm>
+
+#include "Utils.h"
+#include "CacheFile.h"
 
 #include "PrepareAST.h"
 #include "Debug.h"
-#include "PrepareStructures.h"
+#include "DataStructures.h"
 
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/FrontendActions.h>
@@ -63,9 +67,9 @@ cl::opt<std::string> SourceRoot(
     cl::desc("<source root dir>"),
     cl::Required);
 
-cl::opt<std::string> OutputFile(
+cl::opt<std::string> OutputDir(
     "o",
-    cl::desc("<output file>"),
+    cl::desc("<output directory>"),
     cl::Required);
 
 cl::opt<bool> Verbose(
@@ -73,74 +77,24 @@ cl::opt<bool> Verbose(
     cl::desc("Enable verbosity"),
     cl::init(false));
 
+cl::opt<bool> OverwriteCache(
+    "x",
+    cl::desc("Overwrite the current cache and build a new one from scratch"),
+    cl::init(false));
+
 cl::list<std::string> ExtraExtensions(
-    "e",
+    "a",
     cl::desc("Extra extensions to consider"));
 
+cl::list<std::string> ExtraExceptions(
+    "e",
+    cl::desc("Substrings that will cause a directory or file to be ignored"));
+
+std::vector<std::string> exceptions = {"cmake"};
 std::vector<std::string> extensions = {".cpp", ".c", ".cc"};
 
-void PanicIfError(std::error_code err)
+void TraverseSourcesRec(const std::string &sourceRoot, std::unordered_map<std::string, TimestampedFile> &cached, std::vector<TimestampedFile> &uncached)
 {
-    if (err)
-        panic(err.message());
-}
-
-void OutputVerbose(const std::string &msg)
-{
-    if (Verbose)
-    {
-        llvm::errs() << msg << "\n";
-    }
-}
-
-std::unordered_map<std::string, CachedFile> ReadCacheFile(std::string &filename)
-{
-    std::unordered_map<std::string, CachedFile> cachedFiles;
-
-    if (filename == "")
-    {
-        panic("Output file not specified. Specify an output file with -o");
-    }
-
-    std::ifstream file(filename);
-
-    if (!file)
-    {
-        llvm::errs() << "WARNING: Cache file " + filename + " not found - creating a new file\n";
-        std::ofstream newFile(filename);
-
-        if (!newFile)
-            panic("Could not create file " + filename);
-
-        newFile.close();
-
-        return cachedFiles;
-    }
-
-    std::string line;
-    while (std::getline(file, line))
-    {
-        std::istringstream iss(line);
-
-        std::string sourceFile;
-        size_t timestamp;
-        if (!(iss >> sourceFile >> timestamp))
-        {
-            panic("Cache file malformed - Delete the file \"" + filename + "\" and try again");
-        }
-
-        cachedFiles[sourceFile] = {sourceFile, timestamp};
-    }
-
-    file.close();
-
-    return cachedFiles;
-}
-
-std::vector<std::string> TraverseSources(const std::string &sourceRoot, std::unordered_map<std::string, CachedFile> cached)
-{
-    std::vector<std::string> uncached;
-
     std::error_code err;
     directory_iterator it(sourceRoot, err);
 
@@ -150,33 +104,60 @@ std::vector<std::string> TraverseSources(const std::string &sourceRoot, std::uno
     {
         PanicIfError(err);
 
-        if (is_directory(it->path())) // Go deeper.
+        std::string path = it->path();
+        std::string lowercasePath = path;
+        std::transform(lowercasePath.begin(), lowercasePath.end(), lowercasePath.begin(), ::tolower);
+
+        bool acceptable = true;
+        for (auto &exception : exceptions)
         {
-            TraverseSources(it->path(), cached);
-        }
-        else // A file.
-        {
-            if (std::find(extensions.begin(), extensions.end(), extension(it->path())) != extensions.end()) // A source file we need to consider.
+            if (lowercasePath.find(exception) != std::string::npos)
             {
-                auto status = it->status();
-                PanicIfError(status.getError());
+                acceptable = false;
+                break;
+            }
+        }
 
-                size_t timestamp = status->getLastModificationTime().time_since_epoch().count();
+        if (acceptable)
+        {
+            if (is_directory(path)) // A directory, go deeper.
+            {
+                TraverseSourcesRec(path, cached, uncached);
+            }
+            else // A file.
+            {
+                if (std::find(extensions.begin(), extensions.end(), extension(path)) != extensions.end()) // A source file we need to consider.
+                {
+                    auto status = it->status();
+                    PanicIfError(status.getError());
 
-                if (cached.find(it->path()) != cached.end() && cached[it->path()].timestamp == timestamp)
-                {
-                     OutputVerbose("Found file " + it->path() + " which is already cached and up-to-date");                
-                }
-                else
-                {
-                    uncached.push_back(it->path();)
+                    size_t timestamp = status->getLastModificationTime().time_since_epoch().count();
+
+                    if (cached.find(path) != cached.end() && cached[path].timestamp == timestamp)
+                    {
+                        OutputVerbose("Found file " + path + " which is already cached and up-to-date", Verbose);
+                        cached[path].upToDate = true;
+                    }
+                    else
+                    {
+                        uncached.push_back({path, timestamp});
+                        OutputVerbose("Found file " + path + " with timestamp " + std::to_string(timestamp) + " which is not cached and will be updated", Verbose);
+                    }
                 }
             }
         }
 
         it.increment(err);
     }
+}
 
+std::vector<TimestampedFile> TraverseSources(const std::string &sourceRoot, std::unordered_map<std::string, TimestampedFile> &cached)
+{
+    if (is_absolute(sourceRoot))
+        OutputWarning("Source root " + sourceRoot + " is absolute - a relative path is suggested instead");
+
+    std::vector<TimestampedFile> uncached;
+    TraverseSourcesRec(sourceRoot, cached, uncached);
     return uncached;
 }
 
@@ -187,7 +168,7 @@ int main(int argc, const char **argv)
     // Add a preprocessor definition to indicate we're doing TESLA parsing.
     std::vector<const char *> args(argv, argv + argc);
     args.push_back("-D");
-    args.push_back("__TESLA_PREPARE__");
+    args.push_back("__TESLA_ANALYSER__");
 
     // Change argc and argv to refer to the vector's memory.
     // The CompilationDatabase will modify these, so we shouldn't pass in
@@ -203,21 +184,72 @@ int main(int argc, const char **argv)
 
     if (!Compilations)
         panic(
-            "Need compilation options, e.g. tesla-prepare -s ./src/ -o tesla.cache -- -I ../include");
+            "Need compilation options, e.g. tesla-prepare -s ./src/ -o teslacache -- -I ../include");
 
     cl::ParseCommandLineOptions(argc, argv);
+
+    if (!is_directory(OutputDir))
+    {
+        panic("Output path is not a directory");
+    }
+
+    OutputDir += "/";
+
+    std::string OutputFile = OutputDir + "filecache";
 
     for (auto &ext : ExtraExtensions)
         extensions.push_back(ext);
 
-    auto cachedFiles = ReadCacheFile(OutputFile);
-    TraverseSources(SourceRoot, cachedFiles);
+    OutputAlways("Considering files with the following extensions: " + StringFromVector(extensions));
 
-    std::unique_ptr<TeslaActionFactory> Factory(new TeslaActionFactory(OutputFile));
+    for (auto &exc : ExtraExceptions)
+        exceptions.push_back(exc);
 
-    // ClangTool Tool(*Compilations, SourcePaths);
+    OutputAlways("The following substrings will be ignored if encountered: " + StringFromVector(exceptions));
 
-    // return Tool.run(Factory.get());
+    CacheFile cache{OutputFile};
+
+    auto cachedFiles = cache.ReadCachedData(OverwriteCache);
+    auto uncachedFiles = TraverseSources(SourceRoot, cachedFiles);
+
+    std::unordered_map<std::string, TimestampedFile> alreadyUpToDate;
+    for (auto cached : cachedFiles)
+    {
+        if (cached.second.upToDate)
+            alreadyUpToDate[cached.first] = cached.second;
+    }
+
+    for (auto &uncached : uncachedFiles)
+    {
+        auto filename = uncached.filename;
+
+        CollectedData data;
+
+        std::unique_ptr<TeslaActionFactory> Factory(new TeslaActionFactory(data, OutputDir + SanitizeFilename("TESLA_" + filename)));
+
+        ClangTool Tool(*Compilations, std::vector<std::string>{filename});
+
+        Tool.run(Factory.get());
+
+        std::ofstream file {OutputDir + SanitizeFilename("DEFS_" + filename), std::ofstream::trunc};
+
+        if (!file)
+            panic("Could not create cache file for " + filename);
+        
+        for (auto& def : data.definedFunctionNames)
+        {
+            file << def << "\n";
+        }
+
+        file.close();
+    }
+
+    cache.WriteCacheData(alreadyUpToDate, uncachedFiles);
+
+    OutputAlways("Cache data written to " + OutputFile + ":\n\t" +
+                 std::to_string(alreadyUpToDate.size()) + " files already in cache\n\t" +
+                 std::to_string(uncachedFiles.size()) + " files updated\n\t" +
+                 std::to_string(cachedFiles.size() - alreadyUpToDate.size()) + " files removed from the cache");
 
     return 0;
 }

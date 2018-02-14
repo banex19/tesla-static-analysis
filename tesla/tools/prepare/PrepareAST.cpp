@@ -47,59 +47,62 @@ using namespace clang;
 using namespace tesla;
 using std::string;
 
-
 llvm::cl::opt<bool> UseTextFormat(
-  "S", llvm::cl::desc("Use textual (rather than binary) TESLA representation"));
+    "S", llvm::cl::desc("Use textual (rather than binary) TESLA representation"));
 
-namespace tesla {
+namespace tesla
+{
 
-  TeslaConsumer::TeslaConsumer(llvm::StringRef In, llvm::StringRef Out)
-  : InFile(In), OutFile(Out)
-  {
-  }
-
-  void TeslaConsumer::HandleTranslationUnit(ASTContext &Context) {
-   TeslaVisitor Visitor {InFile, &Context};
-
-   Visitor.TraverseDecl( Context.getTranslationUnitDecl());
-
-   if (!Visitor.TraverseDecl(Context.getTranslationUnitDecl()))
-    panic("error analysing '" + InFile + "'");
-
-  std::error_code ErrorInfo;
-  llvm::raw_fd_ostream Out(OutFile.str().c_str(), ErrorInfo, llvm::sys::fs::F_RW);
-  if (ErrorInfo)
-    panic("unable to open '" + OutFile + "': " + ErrorInfo.message());
-
-  ManifestFile Result;
-  for (const AutomatonDescription *A : Visitor.GetAutomata())
-    *Result.add_automaton() = *A;
-
-  for (const Usage *U : Visitor.RootAutomata())
-    *Result.add_root() = *U;
-
-  string ProtobufText;
-
-  if (UseTextFormat)
-    google::protobuf::TextFormat::PrintToString(Result, &ProtobufText);
-  else
-    Result.SerializeToString(&ProtobufText);
-
-  Out << ProtobufText; 
+TeslaConsumer::TeslaConsumer(CollectedData &data, std::string In, std::string Out)
+    : data(data), InFile(In), OutFile(Out)
+{
 }
 
+void TeslaConsumer::HandleTranslationUnit(ASTContext &Context)
+{
+    TeslaVisitor Visitor{InFile, &Context};
 
+    Visitor.TraverseDecl(Context.getTranslationUnitDecl());
+
+    if (!Visitor.TraverseDecl(Context.getTranslationUnitDecl()))
+        panic("error analysing '" + InFile + "'");
+
+    if (Visitor.GetAutomata().size() > 0)
+    {
+        std::error_code ErrorInfo;
+        llvm::raw_fd_ostream Out(OutFile.c_str(), ErrorInfo, llvm::sys::fs::F_RW);
+        if (ErrorInfo)
+            panic("unable to open '" + OutFile + "': " + ErrorInfo.message());
+
+        ManifestFile Result;
+        for (const AutomatonDescription *A : Visitor.GetAutomata())
+            *Result.add_automaton() = *A;
+
+        for (const Usage *U : Visitor.RootAutomata())
+            *Result.add_root() = *U;
+
+        string ProtobufText;
+
+        if (UseTextFormat)
+            google::protobuf::TextFormat::PrintToString(Result, &ProtobufText);
+        else
+            Result.SerializeToString(&ProtobufText);
+
+        Out << ProtobufText;
+    }
+
+    data.definedFunctionNames = std::vector<std::string>(Visitor.GetFunctionDefinitions().begin(), Visitor.GetFunctionDefinitions().end());
+}
 
 std::unique_ptr<ASTConsumer> TeslaAction::CreateASTConsumer(CompilerInstance &C,
-  llvm::StringRef InFile)
+                                                            llvm::StringRef InFile)
 {
-  return std::unique_ptr<ASTConsumer>(new TeslaConsumer(InFile, OutFile));
+    return std::unique_ptr<ASTConsumer>(new TeslaConsumer(data, InFile, OutFile));
 }
 
-
-FrontendAction* TeslaActionFactory::create() {
-  return new TeslaAction(OutFile);
+FrontendAction *TeslaActionFactory::create()
+{
+    return new TeslaAction(data, OutFile);
 }
 
 } // namespace tesla
-

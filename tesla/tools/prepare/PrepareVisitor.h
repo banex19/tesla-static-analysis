@@ -35,40 +35,50 @@
 #include <clang/AST/RecursiveASTVisitor.h>
 #include <llvm/ADT/SmallVector.h>
 
+#include <set>
 
-namespace tesla {
+namespace tesla
+{
 
 class AutomatonDescription;
 class Usage;
 
-
-class TeslaVisitor : public clang::RecursiveASTVisitor<TeslaVisitor> {
+class TeslaVisitor : public clang::RecursiveASTVisitor<TeslaVisitor>
+{
 public:
   TeslaVisitor(llvm::StringRef Filename, clang::ASTContext *Context);
   ~TeslaVisitor();
 
-  bool VisitCallExpr(clang::CallExpr*);
+  bool VisitCallExpr(clang::CallExpr *);
 
   //! Visit a function declaration, looking for TESLA automata descriptions.
-  bool VisitFunctionDecl(clang::FunctionDecl*);
+  bool VisitFunctionDecl(clang::FunctionDecl *);
 
-  const llvm::ArrayRef<AutomatonDescription*> GetAutomata() const {
+  const llvm::ArrayRef<AutomatonDescription *> GetAutomata() const
+  {
     return Automata;
   }
 
-  const llvm::ArrayRef<const Usage*> RootAutomata() const {
+  const llvm::ArrayRef<const Usage *> RootAutomata() const
+  {
     return Roots;
+  }
+
+  const std::set<std::string>& GetFunctionDefinitions() const
+  {
+      return functionDefinitions;
   }
 
 private:
   const llvm::StringRef Filename;
   clang::ASTContext *Context;
 
-  llvm::SmallVector<AutomatonDescription*, 2> Automata;
-  llvm::SmallVector<const Usage*, 2> Roots;
+  llvm::SmallVector<AutomatonDescription *, 2> Automata;
+  llvm::SmallVector<const Usage *, 2> Roots;
+
+  std::set<std::string> functionDefinitions;
 };
 
 } // namespace tesla
 
 #endif
-
