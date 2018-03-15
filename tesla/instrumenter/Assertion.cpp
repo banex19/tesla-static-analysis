@@ -60,110 +60,130 @@ using std::set;
 using std::string;
 using std::vector;
 
-
-namespace tesla {
+namespace tesla
+{
 
 char AssertionSiteInstrumenter::ID = 0;
 
-AssertionSiteInstrumenter::~AssertionSiteInstrumenter() {
-  ::google::protobuf::ShutdownProtobufLibrary();
+AssertionSiteInstrumenter::~AssertionSiteInstrumenter()
+{
+    ::google::protobuf::ShutdownProtobufLibrary();
 }
 
-bool AssertionSiteInstrumenter::runOnModule(Module &M) {
-  InstrCtx.reset(InstrContext::Create(M, SuppressDebugInstr));
+bool AssertionSiteInstrumenter::runOnModule(Module &M)
+{
+    InstrCtx.reset(InstrContext::Create(M, SuppressDebugInstr));
 
-  // Replace all structure automaton "anchors" with automata definitions.
-  for (auto &Fn : M) {
-    StringRef Name = Fn.getName();
-    if (not Name.startswith(STRUCT_AUTOMATON))
-      continue;
+    // Replace all structure automaton "anchors" with automata definitions.
+    for (auto &Fn : M)
+    {
+        StringRef Name = Fn.getName();
+        if (not Name.startswith(STRUCT_AUTOMATON))
+            continue;
 
-    Name = Name.substr(STRUCT_AUTOMATON.length());
-    Identifier ID;
-    ID.set_name(Name.str());
+        Name = Name.substr(STRUCT_AUTOMATON.length());
+        Identifier ID;
+        ID.set_name(Name.str());
 
-    const Automaton *A = this->M.FindAutomaton(ID);
-    if (not A) {
-      llvm::errs() << "TESLA manifest does not contain " << Name << "\n";
-      panic("missing automaton definition", false);
+        const Automaton *A = this->M.FindAutomaton(ID);
+        if (not A)
+        {
+            llvm::errs() << "TESLA manifest does not contain " << Name << "\n";
+            panic("missing automaton definition", false);
+        }
+
+        assert(A->Name() == Name);
+
+        if (Function *AutomatonDefinition = M.getFunction(Name))
+            AutomatonDefinition->eraseFromParent();
+
+        InstrCtx->BuildAutomatonDescription(A);
     }
 
-    assert(A->Name() == Name);
+    // If this module doesn't declare any assertions, just carry on.
+    AssertFn = M.getFunction(INLINE_ASSERTION);
+    if (!AssertFn)
+        return false;
 
-    if (Function *AutomatonDefinition = M.getFunction(Name))
-      AutomatonDefinition->eraseFromParent();
+    // Find all calls to TESLA assertion pseudo-function (before we modify IR).
+    set<CallInst *> AssertCalls;
+    for (Use &I : AssertFn->uses())
+    {
+        CallInst *callInst = dyn_cast<CallInst>(I.getUser());
+        if (callInst)
+            AssertCalls.insert(callInst);
+    }
 
-    InstrCtx->BuildAutomatonDescription(A);
-  }
-
-  // If this module doesn't declare any assertions, just carry on.
-  AssertFn = M.getFunction(INLINE_ASSERTION);
-  if (!AssertFn)
-    return false;
-
-  // Find all calls to TESLA assertion pseudo-function (before we modify IR).
-  set<CallInst*> AssertCalls;
-  for (auto I = AssertFn->use_begin(); I != AssertFn->use_end(); ++I)
-    AssertCalls.insert(cast<CallInst>(I->getUser()));
-
-  return ConvertAssertions(AssertCalls, M);
+    return ConvertAssertions(AssertCalls, M);
 }
-
 
 bool AssertionSiteInstrumenter::ConvertAssertions(
-    set<CallInst*>& AssertCalls, Module& Mod) {
+    set<CallInst *> &AssertCalls, Module &Mod)
+{
+    std::map<const Automaton *, size_t> numRepeatedAutomatons;
+    std::map<Function*, bool> instrumentedFns;
 
-  for (auto *AssertCall : AssertCalls) {
-    auto *Automaton(FindAutomaton(AssertCall));
-    if(!Automaton->Use()->deleted()) {
-      auto AssertTransitions(this->AssertTrans(Automaton));
+    for (auto *AssertCall : AssertCalls)
+    {
+        auto *Automaton(FindAutomaton(AssertCall));
 
-      // Generate the static automaton description.
-      InstrCtx->BuildAutomatonDescription(Automaton);
+        if (!Automaton->Use()->deleted())
+        {
+            numRepeatedAutomatons[Automaton] += 1;
 
-      // Convert the assertion into appropriate instrumentation.
-      IRBuilder<> Builder(AssertCall);
-      vector<Value*> Args(CollectArgs(AssertCall, *Automaton, Mod, Builder));
+            auto AssertTransitions(this->AssertTrans(Automaton));
 
-      TranslationFn *TransFn = InstrCtx->CreateInstrFn(*Automaton, Args);
-      TransFn->InsertCallBefore(AssertCall, Args);
+            // Generate the static automaton description.
+            InstrCtx->BuildAutomatonDescription(Automaton);
 
-      EventTranslator E = TransFn->AddInstrumentation(*Automaton);
-      E.CallUpdateState(*Automaton, AssertTransitions.Symbol);
+            // Convert the assertion into appropriate instrumentation.
+            IRBuilder<> Builder(AssertCall);
+            vector<Value *> Args(CollectArgs(AssertCall, *Automaton, Mod, Builder));
+
+            TranslationFn *TransFn = InstrCtx->CreateInstrFn(*Automaton, numRepeatedAutomatons[Automaton], Args);
+            TransFn->InsertCallBefore(AssertCall, Args);
+
+            if (instrumentedFns[TransFn->getImplementation()] == false)
+            {
+                EventTranslator E = TransFn->AddInstrumentation(*Automaton);
+                E.CallUpdateState(*Automaton, AssertTransitions.Symbol);
+                instrumentedFns[TransFn->getImplementation()] = true;
+            }
+        }
+
+        // Delete the call to the assertion pseudo-function.
+        AssertCall->removeFromParent();
+        delete AssertCall;
     }
 
-    // Delete the call to the assertion pseudo-function.
-    AssertCall->removeFromParent();
-    delete AssertCall;
-  }
+    AssertFn->removeFromParent();
+    delete AssertFn;
 
-  AssertFn->removeFromParent();
-  delete AssertFn;
-
-  return true;
+    return true;
 }
 
-const Automaton* AssertionSiteInstrumenter::FindAutomaton(CallInst *Call) {
-  Location Loc;
-  ParseAssertionLocation(&Loc, Call);
+const Automaton *AssertionSiteInstrumenter::FindAutomaton(CallInst *Call)
+{
+    Location Loc;
+    ParseAssertionLocation(&Loc, Call);
 
-  return M.FindAutomaton(Loc);
+    return M.FindAutomaton(Loc);
 }
 
+TEquivalenceClass AssertionSiteInstrumenter::AssertTrans(const Automaton *A)
+{
+    for (auto EquivClass : *A)
+        if (isa<AssertTransition>(*EquivClass.begin()))
+            return EquivClass;
 
-TEquivalenceClass AssertionSiteInstrumenter::AssertTrans(const Automaton *A) {
-  for (auto EquivClass : *A)
-    if (isa<AssertTransition>(*EquivClass.begin()))
-      return EquivClass;
-
-  panic("automaton '" + A->Name() + "' has no assertion site event");
+    panic("automaton '" + A->Name() + "' has no assertion site event");
 }
 
-
-vector<Value*> AssertionSiteInstrumenter::CollectArgs(
-    Instruction *Before, const Automaton& A,
-    Module& Mod, IRBuilder<>& Builder) {
-  return tesla::CollectArgs(Before, A, Mod, Builder);
+vector<Value *> AssertionSiteInstrumenter::CollectArgs(
+    Instruction *Before, const Automaton &A,
+    Module &Mod, IRBuilder<> &Builder)
+{
+    return tesla::CollectArgs(Before, A, Mod, Builder);
 }
 
-}
+} // namespace tesla

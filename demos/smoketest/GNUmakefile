@@ -4,7 +4,7 @@
 # The location of TESLA outputs (binaries, libraries, etc.).
 # Only needed when we don't install TESLA to /usr/local.
 TESLA_SOURCE_DIR?=../..
-TESLA_BUILD_DIR?=${TESLA_SOURCE_DIR}/build
+TESLA_BUILD_DIR?=~/tesla/build
 
 # For our demo handcoded LLVM IR, we need to assign an arch-vendor-OS triple.
 # Normal consumers don't need to do this.
@@ -16,6 +16,7 @@ LLC=		llc
 REVISION:=	$(shell ./revision.sh)
 CFLAGS+=	-g  -Wall -D REVISION="${REVISION}" \
 		-Wno-deprecated-declarations	# DES_set_key() is deprecated
+OPTFLAGS?= -O0
 LIBS+=		-l crypto -l tesla
 
 BIN=		smoketest
@@ -60,7 +61,7 @@ example.tesla: example.c tcp.h
 
 # Compile IR to object code.
 .ll.o:
-	${LLC} -mtriple=${TRIPLE} -filetype=obj $< -o $@
+	${LLC} ${OPTFLAGS} -mtriple=${TRIPLE} -filetype=obj $< -o $@
 
 # Build the demo application.
 ${BIN}: ${OBJS}

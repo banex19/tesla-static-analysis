@@ -39,6 +39,8 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
 
+#include <iostream>
+
 using namespace llvm;
 using namespace tesla;
 
@@ -160,14 +162,22 @@ InstrContext::InstrContext(Module& M, LLVMContext& Ctx, Type* VoidTy,
 Constant* InstrContext::BuildAutomatonDescription(const Automaton *A) {
   const string Name(A->Name());
 
+  // std::cerr << "Building automaton " << A->Name() << "\n";
+
   //
   // If there is already a global variable with this automaton's name, it
   // had better be an extern reference: only the assertion instrumenter
   // should call this method and it should only do so once per automaton.
   //
   auto *Existing = M.getGlobalVariable(Name);
+
+  bool externalDeclaration = false;
+ 
   if (Existing)
-    assert(!Existing->hasInitializer());
+   externalDeclaration = !Existing->hasInitializer();
+
+  if (Existing && !externalDeclaration)
+        return Existing;
 
   vector<Constant*> Transitions;
   vector<Constant*> EventDescriptions;
@@ -239,7 +249,7 @@ Constant* InstrContext::BuildAutomatonDescription(const Automaton *A) {
   // If there is already a variable with the same name, it is an extern
   // declaration; replace it with this definition.
   //
-  if (Existing) {
+  if (Existing && externalDeclaration) {
     Existing->replaceAllUsesWith(Automaton);
     Existing->removeFromParent();
     delete Existing;
@@ -372,10 +382,10 @@ Constant* InstrContext::ConstStr(StringRef S, StringRef Name) {
 }
 
 
-TranslationFn* InstrContext::CreateInstrFn(const Automaton& A,
+TranslationFn* InstrContext::CreateInstrFn(const Automaton& A,  size_t numOccurrences,
                                            ArrayRef<Value*> AssertArgs)
 {
-  const string Name = "assertion_" + A.Name();
+  string Name = "assertion_" + A.Name();
   const string PrintfPrefix = ("[ASRT] automaton " + Twine(A.ID())).str();
 
   vector<Type*> ArgTypes;
@@ -383,6 +393,11 @@ TranslationFn* InstrContext::CreateInstrFn(const Automaton& A,
     ArgTypes.push_back(Arg->getType());
 
   FunctionType *InstrType = FunctionType::get(VoidTy, ArgTypes, false);
+
+  if (dyn_cast<Function>(M.getOrInsertFunction(Name, InstrType)) == nullptr)
+  {
+      Name = Name + "_" + std::to_string(numOccurrences);
+  }
 
   return TranslationFn::Create(*this, Name, InstrType, PrintfPrefix,
                                GlobalValue::InternalLinkage);

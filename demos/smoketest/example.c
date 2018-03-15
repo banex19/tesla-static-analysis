@@ -39,11 +39,12 @@
 int
 perform_operation(int op, struct object *o)
 {
-#ifdef TESLA
+#if defined(TESLA_MANY) || defined(TESLA_SINGLE)
 	/* A very simple TESLA assertion. */
 	TESLA_WITHIN(example_syscall,
 		previously(security_check(ANY(ptr), o, op) == 0));
-
+#endif
+#ifdef TESLA_MANY
 	/* An even simpler assertion! */
 	TESLA_WITHIN(example_syscall, previously(call(security_check)));
 
@@ -87,8 +88,8 @@ example_syscall(struct credential *cred, int index, int op)
 	if (error != 0)
 		return (error);
 
-	des_cblock		des_key;
-	des_key_schedule	key_schedule;
+	DES_cblock		des_key;
+	DES_key_schedule	key_schedule;
 
 	crypto_setup(&des_key, &key_schedule);
 

@@ -62,12 +62,15 @@ TranslationFn* TranslationFn::Create(InstrContext& InstrCtx,
                                      FunctionType *InstrType,
                                      StringRef PrintfPrefix,
                                      GlobalValue::LinkageTypes Linkage) {
-
   Module& M = InstrCtx.M;
 
   string Name = (INSTR_BASE + NameSuffix).str();
-  auto *InstrFn = dyn_cast<Function>(M.getOrInsertFunction(Name, InstrType));
-  InstrFn->setLinkage(Linkage);
+
+  Function *InstrFn = nullptr;
+  InstrFn = dyn_cast<Function>(M.getOrInsertFunction(Name, InstrType));
+
+  if (InstrFn->getLinkage() != Linkage)
+    InstrFn->setLinkage(Linkage);
 
   //
   // Invariant: instrumentation functions should have two exit blocks, one for

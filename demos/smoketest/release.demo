@@ -9,7 +9,7 @@
 
 cd `dirname $0`
 
-CFLAGS="$*" make clean all || exit 1
+CFLAGS="$*" OPTFLAGS="-O3" make clean all || exit 1
 #TESLA_DEBUG=tesla.events ./smoketest
 ./smoketest
 
