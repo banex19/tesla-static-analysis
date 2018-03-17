@@ -3,6 +3,7 @@ build/
 build
 doxygen
 .clang_complete
+.clang-format
 *.pyc
 newb
 CMakeCache.txt

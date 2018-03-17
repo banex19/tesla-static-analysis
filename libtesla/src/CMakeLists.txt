@@ -11,7 +11,6 @@ add_library(tesla SHARED
 	tesla_store.c
 	tesla_update.c
 	tesla_util.c
-    thintesla/TeslaAssertionBuilder.cpp
 )
 
 target_link_libraries(tesla ${CMAKE_THREAD_LIBS_INIT})
