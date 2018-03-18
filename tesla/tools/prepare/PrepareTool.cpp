@@ -28,31 +28,31 @@
  * SUCH DAMAGE.
  */
 
-#include <fstream>
-#include <string>
-#include <vector>
-#include <unordered_map>
-#include <set>
 #include <algorithm>
+#include <fstream>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
-#include "Utils.h"
 #include "CacheFile.h"
+#include "Utils.h"
 
-#include "PrepareAST.h"
-#include "Debug.h"
 #include "DataStructures.h"
+#include "Debug.h"
+#include "PrepareAST.h"
 
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/FrontendActions.h>
+#include <clang/Tooling/CommonOptionsParser.h>
 #include <clang/Tooling/CompilationDatabase.h>
 #include <clang/Tooling/Tooling.h>
-#include <clang/Tooling/CommonOptionsParser.h>
 
 #include <llvm/Support/CommandLine.h>
-#include <llvm/Support/PrettyStackTrace.h>
-#include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/FileSystem.h>
+#include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/Path.h>
+#include <llvm/Support/PrettyStackTrace.h>
 
 using namespace clang::driver;
 using namespace clang::tooling;
@@ -93,7 +93,7 @@ cl::list<std::string> ExtraExceptions(
 std::vector<std::string> exceptions = {"cmake"};
 std::vector<std::string> extensions = {".cpp", ".c", ".cc"};
 
-void TraverseSourcesRec(const std::string &sourceRoot, std::unordered_map<std::string, TimestampedFile> &cached, std::vector<TimestampedFile> &uncached)
+void TraverseSourcesRec(const std::string& sourceRoot, std::unordered_map<std::string, TimestampedFile>& cached, std::vector<TimestampedFile>& uncached)
 {
     std::error_code err;
     directory_iterator it(sourceRoot, err);
@@ -109,7 +109,7 @@ void TraverseSourcesRec(const std::string &sourceRoot, std::unordered_map<std::s
         std::transform(lowercasePath.begin(), lowercasePath.end(), lowercasePath.begin(), ::tolower);
 
         bool acceptable = true;
-        for (auto &exception : exceptions)
+        for (auto& exception : exceptions)
         {
             if (lowercasePath.find(exception) != std::string::npos)
             {
@@ -151,7 +151,7 @@ void TraverseSourcesRec(const std::string &sourceRoot, std::unordered_map<std::s
     }
 }
 
-std::vector<TimestampedFile> TraverseSources(const std::string &sourceRoot, std::unordered_map<std::string, TimestampedFile> &cached)
+std::vector<TimestampedFile> TraverseSources(const std::string& sourceRoot, std::unordered_map<std::string, TimestampedFile>& cached)
 {
     if (is_absolute(sourceRoot))
         OutputWarning("Source root " + sourceRoot + " is absolute - a relative path is suggested instead");
@@ -161,12 +161,12 @@ std::vector<TimestampedFile> TraverseSources(const std::string &sourceRoot, std:
     return uncached;
 }
 
-int main(int argc, const char **argv)
+int main(int argc, const char** argv)
 {
     llvm::PrettyStackTraceProgram X(argc, argv);
 
     // Add a preprocessor definition to indicate we're doing TESLA parsing.
-    std::vector<const char *> args(argv, argv + argc);
+    std::vector<const char*> args(argv, argv + argc);
     args.push_back("-D");
     args.push_back("__TESLA_ANALYSER__");
 
@@ -197,12 +197,12 @@ int main(int argc, const char **argv)
 
     std::string OutputFile = OutputDir + "filecache";
 
-    for (auto &ext : ExtraExtensions)
+    for (auto& ext : ExtraExtensions)
         extensions.push_back(ext);
 
     OutputAlways("Considering files with the following extensions: " + StringFromVector(extensions));
 
-    for (auto &exc : ExtraExceptions)
+    for (auto& exc : ExtraExceptions)
         exceptions.push_back(exc);
 
     OutputAlways("The following substrings will be ignored if encountered: " + StringFromVector(exceptions));
@@ -219,7 +219,7 @@ int main(int argc, const char **argv)
             alreadyUpToDate[cached.first] = cached.second;
     }
 
-    for (auto &uncached : uncachedFiles)
+    for (auto& uncached : uncachedFiles)
     {
         auto filename = uncached.filename;
 
@@ -231,11 +231,11 @@ int main(int argc, const char **argv)
 
         Tool.run(Factory.get());
 
-        std::ofstream file {OutputDir + SanitizeFilename("DEFS_" + filename), std::ofstream::trunc};
+        std::ofstream file{OutputDir + SanitizeFilename("DEFS_" + filename), std::ofstream::trunc};
 
         if (!file)
             panic("Could not create cache file for " + filename);
-        
+
         for (auto& def : data.definedFunctionNames)
         {
             file << def << "\n";

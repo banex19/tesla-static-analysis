@@ -32,8 +32,8 @@
 #ifndef AST_H
 #define AST_H
 
-#include "PrepareVisitor.h"
 #include "DataStructures.h"
+#include "PrepareVisitor.h"
 
 #include <clang/AST/ASTConsumer.h>
 #include <clang/Frontend/FrontendAction.h>
@@ -53,11 +53,11 @@ namespace tesla
 class TeslaConsumer : public clang::ASTConsumer
 {
   public:
-    TeslaConsumer(CollectedData &data, std::string InFilename, std::string OutFilename);
-    virtual void HandleTranslationUnit(clang::ASTContext &Context);
+    TeslaConsumer(CollectedData& data, std::string InFilename, std::string OutFilename);
+    virtual void HandleTranslationUnit(clang::ASTContext& Context);
 
   private:
-    CollectedData &data;
+    CollectedData& data;
     std::string InFile;
     std::string OutFile;
 };
@@ -65,26 +65,26 @@ class TeslaConsumer : public clang::ASTConsumer
 class TeslaAction : public clang::ASTFrontendAction
 {
   public:
-    TeslaAction(CollectedData &data, std::string OutFilename) : data(data), OutFile(OutFilename) {}
+    TeslaAction(CollectedData& data, std::string OutFilename) : data(data), OutFile(OutFilename) {}
 
     std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
-        clang::CompilerInstance &Compiler, llvm::StringRef InFile);
+        clang::CompilerInstance& Compiler, llvm::StringRef InFile);
 
   private:
-    CollectedData &data;
+    CollectedData& data;
     std::string OutFile;
 };
 
 class TeslaActionFactory : public clang::tooling::FrontendActionFactory
 {
   public:
-    TeslaActionFactory(CollectedData &data, std::string OutFilename) : data(data), OutFile(OutFilename) {}
+    TeslaActionFactory(CollectedData& data, std::string OutFilename) : data(data), OutFile(OutFilename) {}
     ~TeslaActionFactory() {}
 
-    clang::FrontendAction *create();
+    clang::FrontendAction* create();
 
   private:
-    CollectedData &data;
+    CollectedData& data;
     std::string OutFile;
 };
 

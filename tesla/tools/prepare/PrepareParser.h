@@ -35,50 +35,54 @@
 #include <tesla.pb.h>
 
 #include <llvm/ADT/APInt.h>
+#include <llvm/ADT/StringRef.h>
 
 #include <functional>
 #include <string>
 #include <vector>
 
-namespace clang {
-  class ASTContext;
-  class BinaryOperator;
-  class CallExpr;
-  class ChooseExpr;
-  class CompoundStmt;
-  class Decl;
-  class DeclRefExpr;
-  class Expr;
-  class FunctionDecl;
-  class MemberExpr;
-  class ObjCMessageExpr;
-  class SourceLocation;
-  class SourceRange;
-  class Stmt;
-  class UnaryOperator;
-  class ValueDecl;
+namespace clang
+{
+class ASTContext;
+class BinaryOperator;
+class CallExpr;
+class ChooseExpr;
+class CompoundStmt;
+class Decl;
+class DeclRefExpr;
+class Expr;
+class FunctionDecl;
+class MemberExpr;
+class ObjCMessageExpr;
+class SourceLocation;
+class SourceRange;
+class Stmt;
+class UnaryOperator;
+class ValueDecl;
+} // namespace clang
+
+namespace llvm
+{
+class APSInt;
 }
 
-namespace llvm {
-  class APSInt;
-}
-
-
-namespace tesla {
+namespace tesla
+{
 
 //! A parser for TESLA automata descriptions.
-class Parser {
-public:
-  //! Create a Parser for an inline assertion.
-  static Parser* AssertionParser(clang::CallExpr*, clang::ASTContext&);
+class Parser
+{
+  public:
+    //! Create a Parser for an inline assertion.
+    static Parser* AssertionParser(clang::CallExpr*, clang::ASTContext&);
 
-  //! Create a Parser for an automaton description.
-  static Parser* AutomatonParser(clang::FunctionDecl*, clang::ASTContext&);
+    //! Create a Parser for an automaton description.
+    static Parser* AutomatonParser(clang::FunctionDecl*, clang::ASTContext&);
 
-  //! Create a Parser for a struct-automaton mapping.
-  static Parser* MappingParser(clang::FunctionDecl*, clang::ASTContext&);
+    //! Create a Parser for a struct-automaton mapping.
+    static Parser* MappingParser(clang::FunctionDecl*, clang::ASTContext&);
 
-  /**
+    /**
    * Parse the automaton and its usage.
    *
    * @param[out]  Descrip    the automaton description will be stored here
@@ -86,52 +90,52 @@ public:
    *
    * @return true on success, false on failure
    */
-  bool Parse(std::unique_ptr<AutomatonDescription>& Descrip,
-             std::unique_ptr<Usage>& Usage);
+    bool Parse(std::unique_ptr<AutomatonDescription>& Descrip,
+               std::unique_ptr<Usage>& Usage);
 
+  private:
+    class Flags
+    {
+      public:
+        //! Callee- or caller-context instrumentation of functions.
+        FunctionEvent::CallContext FnInstrContext;
 
-private:
-  class Flags {
-  public:
-    //! Callee- or caller-context instrumentation of functions.
-    FunctionEvent::CallContext FnInstrContext;
+        //! Interpret boolean 'or' as inclusive or exclusive.
+        BooleanExpr::Operation OrOperator;
 
-    //! Interpret boolean 'or' as inclusive or exclusive.
-    BooleanExpr::Operation OrOperator;
-
-    /**
+        /**
      * TESLA 'strict' mode: the automaton describes all uses of the
      * events it names.
      */
-    bool StrictMode;
-  };
+        bool StrictMode;
+    };
 
-  Parser(clang::ASTContext& Ctx, Identifier ID = Identifier(),
-         AutomatonDescription::Context C = AutomatonDescription::Global,
-         clang::Expr* Begin = NULL, clang::Expr* End = NULL,
-         clang::Stmt *Root = NULL, Flags InitialFlags = Flags(),
-         llvm::StringRef SourceCode = llvm::StringRef())
-    : Ctx(Ctx), ID(ID), TeslaContext(C), Beginning(Begin), End(End),
-      Root(Root), RootFlags(InitialFlags), SourceCode(SourceCode)
-  {
-  }
+    Parser(clang::ASTContext& Ctx, Identifier ID = Identifier(),
+           AutomatonDescription::Context C = AutomatonDescription::Global,
+           clang::Expr* Begin = NULL, clang::Expr* End = NULL,
+           clang::Stmt* Root = NULL, Flags InitialFlags = Flags(),
+           llvm::StringRef SourceCode = llvm::StringRef())
+        : Ctx(Ctx), ID(ID), TeslaContext(C), Beginning(Begin), End(End),
+          Root(Root), RootFlags(InitialFlags), SourceCode(SourceCode)
+    {
+    }
 
-  bool Parse(Location*, clang::Expr*, clang::Expr*, clang::Expr*);
-  bool Parse(AutomatonDescription::Context*, clang::Expr*);
+    bool Parse(Location*, clang::Expr*, clang::Expr*, clang::Expr*);
+    bool Parse(AutomatonDescription::Context*, clang::Expr*);
 
-  bool Parse(Expression*, const clang::CompoundStmt*, Flags);
-  bool Parse(Expression*, const clang::Expr*, Flags);
-  bool Parse(Expression*, const clang::BinaryOperator*, Flags);
-  bool Parse(Expression*, const clang::CallExpr*, Flags);
-  bool Parse(Expression*, const clang::DeclRefExpr*, Flags);
-  bool Parse(Expression*, const clang::UnaryOperator*, Flags);
-  bool Parse(Expression*, const clang::ChooseExpr*, Flags);
+    bool Parse(Expression*, const clang::CompoundStmt*, Flags);
+    bool Parse(Expression*, const clang::Expr*, Flags);
+    bool Parse(Expression*, const clang::BinaryOperator*, Flags);
+    bool Parse(Expression*, const clang::CallExpr*, Flags);
+    bool Parse(Expression*, const clang::DeclRefExpr*, Flags);
+    bool Parse(Expression*, const clang::UnaryOperator*, Flags);
+    bool Parse(Expression*, const clang::ChooseExpr*, Flags);
 
-  bool Parse(FunctionRef*, const clang::FunctionDecl*, Flags);
+    bool Parse(FunctionRef*, const clang::FunctionDecl*, Flags);
 
-  typedef std::function<Argument* ()> ArgFactory;
+    typedef std::function<Argument*()> ArgFactory;
 
-  /**
+    /**
    * Parse a value (e.g., a function argument) into one or more
    * tesla::Argument objects.
    *
@@ -139,91 +143,86 @@ private:
    * when the platform calling convention requires, e.g., splitting structures
    * passed by value into their constituent fields.
    */
-  bool ParseArg(ArgFactory, const clang::Expr*,
-                Parser::Flags, bool DoNotRegister = false,
-                bool justField = false);
-  bool ParseArg(ArgFactory, const clang::ValueDecl*, bool AllowAny,
-                Parser::Flags, bool DoNotRegister = false,
-                bool justField = false);
+    bool ParseArg(ArgFactory, const clang::Expr*,
+                  Parser::Flags, bool DoNotRegister = false,
+                  bool justField = false);
+    bool ParseArg(ArgFactory, const clang::ValueDecl*, bool AllowAny,
+                  Parser::Flags, bool DoNotRegister = false,
+                  bool justField = false);
 
-  bool ParseStructField(StructField*, const clang::MemberExpr*, Flags,
-                        bool DoNotRegisterBase = false);
+    bool ParseStructField(StructField*, const clang::MemberExpr*, Flags,
+                          bool DoNotRegisterBase = false);
 
-  bool ParseSubAutomaton(Expression*, const clang::CallExpr*, Flags);
-  bool ParseModifier(Expression*, const clang::CallExpr*, Flags);
+    bool ParseSubAutomaton(Expression*, const clang::CallExpr*, Flags);
+    bool ParseModifier(Expression*, const clang::CallExpr*, Flags);
 
-  // TESLA modifiers:
-  //! A method that parses @ref clang::CallExpr (modifier, sub-automaton...).
-  typedef bool (Parser::*CallParser)(Expression*, const clang::CallExpr*,
-                                     Flags);
+    // TESLA modifiers:
+    //! A method that parses @ref clang::CallExpr (modifier, sub-automaton...).
+    typedef bool (Parser::*CallParser)(Expression*, const clang::CallExpr*,
+                                       Flags);
 
-  bool ParseFunctionCall(Expression*, const clang::CallExpr*, Flags);
-  bool ParseObjCMessageSend(FunctionEvent*, const clang::ObjCMessageExpr*,
-                            Flags);
+    bool ParseFunctionCall(Expression*, const clang::CallExpr*, Flags);
+    bool ParseObjCMessageSend(FunctionEvent*, const clang::ObjCMessageExpr*,
+                              Flags);
 
-  bool ParseFunctionReturn(Expression*, const clang::CallExpr*, Flags);
-  bool ParseCallee(Expression*, const clang::CallExpr*, Flags);
-  bool ParseCaller(Expression*, const clang::CallExpr*, Flags);
-  bool ParseStrictMode(Expression*, const clang::CallExpr*, Flags);
-  bool ParseConditional(Expression*, const clang::CallExpr*, Flags);
-  bool ParseOptional(Expression*, const clang::CallExpr*, Flags);
-  bool ParseSequence(Expression*, const clang::CallExpr*, Flags);
-  bool ParseRepetition(Expression*, const clang::CallExpr*, Flags);
+    bool ParseFunctionReturn(Expression*, const clang::CallExpr*, Flags);
+    bool ParseCallee(Expression*, const clang::CallExpr*, Flags);
+    bool ParseCaller(Expression*, const clang::CallExpr*, Flags);
+    bool ParseStrictMode(Expression*, const clang::CallExpr*, Flags);
+    bool ParseConditional(Expression*, const clang::CallExpr*, Flags);
+    bool ParseOptional(Expression*, const clang::CallExpr*, Flags);
+    bool ParseSequence(Expression*, const clang::CallExpr*, Flags);
+    bool ParseRepetition(Expression*, const clang::CallExpr*, Flags);
 
-  //! Helper for @ref ParseFunctionCall and @ref ParseFunctionReturn.
-  bool ParseFunctionDetails(FunctionEvent*, const clang::CallExpr*,
-                            bool ParseRetVal, Flags);
+    //! Helper for @ref ParseFunctionCall and @ref ParseFunctionReturn.
+    bool ParseFunctionDetails(FunctionEvent*, const clang::CallExpr*,
+                              bool ParseRetVal, Flags);
 
-  //! Parse 'foo(x) == y'.
-  bool ParseFunctionCall(Expression*, const clang::BinaryOperator*, Flags);
+    //! Parse 'foo(x) == y'.
+    bool ParseFunctionCall(Expression*, const clang::BinaryOperator*, Flags);
 
-  //! Parse 'x->foo = bar'.
-  bool ParseFieldAssign(Expression*, const clang::BinaryOperator*, Flags);
+    //! Parse 'x->foo = bar'.
+    bool ParseFieldAssign(Expression*, const clang::BinaryOperator*, Flags);
 
+    //! Check that an @ref Expression is '__tesla_ignore'.
+    bool CheckIgnore(const clang::Expr*);
 
-  //! Check that an @ref Expression is '__tesla_ignore'.
-  bool CheckIgnore(const clang::Expr*);
+    //! Check that we aren't mixing simple with compound assignments.
+    bool CheckAssignmentKind(const clang::ValueDecl*, const clang::Expr*);
 
-  //! Check that we aren't mixing simple with compound assignments.
-  bool CheckAssignmentKind(const clang::ValueDecl*, const clang::Expr*);
+    //! Parse a literal C string embedded in code.
+    std::string ParseStringLiteral(const clang::Expr*);
 
-  //! Parse a literal C string embedded in code.
-  std::string ParseStringLiteral(const clang::Expr*);
+    //! Parse an Integer Constant Expression (ICE).
+    llvm::APInt ParseIntegerLiteral(const clang::Expr*);
 
-  //! Parse an Integer Constant Expression (ICE).
-  llvm::APInt ParseIntegerLiteral(const clang::Expr*);
+    //! Get the original source (as spelled by the programmer) for a range.
+    llvm::StringRef FindOriginalSource(const clang::SourceRange& Range);
 
-  //! Get the original source (as spelled by the programmer) for a range.
-  llvm::StringRef FindOriginalSource(const clang::SourceRange& Range);
+    //! Remember that we have seen an argument (and set its index).
+    bool RegisterArg(Argument*);
 
-  //! Remember that we have seen an argument (and set its index).
-  bool RegisterArg(Argument*);
+    //! Report a TESLA error.
+    void ReportError(llvm::StringRef Message, const clang::Decl*);
+    void ReportError(llvm::StringRef Message, const clang::Stmt*);
+    void ReportError(llvm::StringRef Message, const clang::SourceLocation&,
+                     const clang::SourceRange&);
 
+    clang::ASTContext& Ctx;
 
-  //! Report a TESLA error.
-  void ReportError(llvm::StringRef Message, const clang::Decl*);
-  void ReportError(llvm::StringRef Message, const clang::Stmt*);
-  void ReportError(llvm::StringRef Message, const clang::SourceLocation&,
-                   const clang::SourceRange&);
+    const Identifier ID;
+    const AutomatonDescription::Context TeslaContext;
+    const clang::Expr* Beginning; //!< Starting point (bound) for automaton.
+    const clang::Expr* End;       //!< End bound for automaton.
+    const clang::Stmt* Root;      //!< Expression describing the automaton.
+    const Flags RootFlags;
+    const llvm::StringRef SourceCode; //!< Source code of automaton definition.
 
-
-
-  clang::ASTContext& Ctx;
-
-  const Identifier ID;
-  const AutomatonDescription::Context TeslaContext;
-  const clang::Expr *Beginning;     //!< Starting point (bound) for automaton.
-  const clang::Expr *End;           //!< End bound for automaton.
-  const clang::Stmt *Root;          //!< Expression describing the automaton.
-  const Flags RootFlags;
-  const llvm::StringRef SourceCode; //!< Source code of automaton definition.
-
-  std::map<const clang::ValueDecl*, const clang::Expr*> FieldAssignments;
-  std::vector<const clang::Decl*> FreeVariables;
-  std::vector<const Argument*> References;
+    std::map<const clang::ValueDecl*, const clang::Expr*> FieldAssignments;
+    std::vector<const clang::Decl*> FreeVariables;
+    std::vector<const Argument*> References;
 };
 
-}
+} // namespace tesla
 
-#endif  // PARSERS_H
-
+#endif // PARSERS_H

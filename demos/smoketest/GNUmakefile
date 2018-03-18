@@ -4,7 +4,7 @@
 # The location of TESLA outputs (binaries, libraries, etc.).
 # Only needed when we don't install TESLA to /usr/local.
 TESLA_SOURCE_DIR?=../..
-TESLA_BUILD_DIR?=~/tesla/build
+TESLA_BUILD_DIR?=~/tesla/build/binall
 
 # For our demo handcoded LLVM IR, we need to assign an arch-vendor-OS triple.
 # Normal consumers don't need to do this.

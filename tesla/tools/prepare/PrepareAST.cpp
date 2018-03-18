@@ -41,7 +41,8 @@
 
 #include <google/protobuf/text_format.h>
 
-#include <string>
+#include <unordered_map>
+#include <vector>
 
 using namespace clang;
 using namespace tesla;
@@ -53,12 +54,12 @@ llvm::cl::opt<bool> UseTextFormat(
 namespace tesla
 {
 
-TeslaConsumer::TeslaConsumer(CollectedData &data, std::string In, std::string Out)
+TeslaConsumer::TeslaConsumer(CollectedData& data, std::string In, std::string Out)
     : data(data), InFile(In), OutFile(Out)
 {
 }
 
-void TeslaConsumer::HandleTranslationUnit(ASTContext &Context)
+void TeslaConsumer::HandleTranslationUnit(ASTContext& Context)
 {
     TeslaVisitor Visitor{InFile, &Context};
 
@@ -75,11 +76,19 @@ void TeslaConsumer::HandleTranslationUnit(ASTContext &Context)
             panic("unable to open '" + OutFile + "': " + ErrorInfo.message());
 
         ManifestFile Result;
-        for (const AutomatonDescription *A : Visitor.GetAutomata())
+        for (const AutomatonDescription* A : Visitor.GetAutomata())
             *Result.add_automaton() = *A;
 
-        for (const Usage *U : Visitor.RootAutomata())
-            *Result.add_root() = *U;
+        size_t id = 0;
+        for (const Usage* U : Visitor.RootAutomata())
+        {
+            Usage* usage = const_cast<Usage*>(U);
+
+            usage->set_uniqueid(id);
+            *Result.add_root() = *usage;
+
+            id++;
+        }
 
         string ProtobufText;
 
@@ -94,13 +103,13 @@ void TeslaConsumer::HandleTranslationUnit(ASTContext &Context)
     data.definedFunctionNames = std::vector<std::string>(Visitor.GetFunctionDefinitions().begin(), Visitor.GetFunctionDefinitions().end());
 }
 
-std::unique_ptr<ASTConsumer> TeslaAction::CreateASTConsumer(CompilerInstance &C,
+std::unique_ptr<ASTConsumer> TeslaAction::CreateASTConsumer(CompilerInstance& C,
                                                             llvm::StringRef InFile)
 {
     return std::unique_ptr<ASTConsumer>(new TeslaConsumer(data, InFile, OutFile));
 }
 
-FrontendAction *TeslaActionFactory::create()
+FrontendAction* TeslaActionFactory::create()
 {
     return new TeslaAction(data, OutFile);
 }

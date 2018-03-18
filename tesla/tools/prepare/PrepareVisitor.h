@@ -45,38 +45,38 @@ class Usage;
 
 class TeslaVisitor : public clang::RecursiveASTVisitor<TeslaVisitor>
 {
-public:
-  TeslaVisitor(llvm::StringRef Filename, clang::ASTContext *Context);
-  ~TeslaVisitor();
+  public:
+    TeslaVisitor(llvm::StringRef Filename, clang::ASTContext* Context);
+    ~TeslaVisitor();
 
-  bool VisitCallExpr(clang::CallExpr *);
+    bool VisitCallExpr(clang::CallExpr*);
 
-  //! Visit a function declaration, looking for TESLA automata descriptions.
-  bool VisitFunctionDecl(clang::FunctionDecl *);
+    //! Visit a function declaration, looking for TESLA automata descriptions.
+    bool VisitFunctionDecl(clang::FunctionDecl*);
 
-  const llvm::ArrayRef<AutomatonDescription *> GetAutomata() const
-  {
-    return Automata;
-  }
+    const llvm::ArrayRef<AutomatonDescription*> GetAutomata() const
+    {
+        return Automata;
+    }
 
-  const llvm::ArrayRef<const Usage *> RootAutomata() const
-  {
-    return Roots;
-  }
+    const llvm::ArrayRef<const Usage*> RootAutomata() const
+    {
+        return Roots;
+    }
 
-  const std::set<std::string>& GetFunctionDefinitions() const
-  {
-      return functionDefinitions;
-  }
+    const std::set<std::string>& GetFunctionDefinitions() const
+    {
+        return functionDefinitions;
+    }
 
-private:
-  const llvm::StringRef Filename;
-  clang::ASTContext *Context;
+  private:
+    const llvm::StringRef Filename;
+    clang::ASTContext* Context;
 
-  llvm::SmallVector<AutomatonDescription *, 2> Automata;
-  llvm::SmallVector<const Usage *, 2> Roots;
+    llvm::SmallVector<AutomatonDescription*, 2> Automata;
+    llvm::SmallVector<const Usage*, 2> Roots;
 
-  std::set<std::string> functionDefinitions;
+    std::set<std::string> functionDefinitions;
 };
 
 } // namespace tesla

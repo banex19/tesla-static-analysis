@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <vector>
 
 struct TimestampedFile
 {
@@ -10,6 +11,6 @@ struct TimestampedFile
 };
 
 struct CollectedData
-{  
-   std::vector<std::string> definedFunctionNames;
+{
+    std::vector<std::string> definedFunctionNames;
 };

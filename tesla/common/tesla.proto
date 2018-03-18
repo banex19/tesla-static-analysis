@@ -54,14 +54,17 @@ message Usage {
   /** The identifier of the automaton in question. */
   required Identifier identifier = 1;
 
+  /** The unique incremental ID assigned to this automaton instance. */
+  required uint64 uniqueId = 2;
+
   /** Where the automaton begins: a bound, a place for initialisation. */
-  optional Expression beginning = 2;
+  optional Expression beginning = 3;
 
   /** Where the automataon ends: a bound, a place for cleanup. */
-  optional Expression end = 3;
+  optional Expression end = 4;
 
   /** Should this usage be instrumented or ignored (based on static analysis)? **/
-  optional bool deleted = 4 [ default = false ];
+  optional bool deleted = 5 [ default = false ];
 }
 
 

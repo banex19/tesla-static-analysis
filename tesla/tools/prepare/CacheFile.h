@@ -1,15 +1,15 @@
 #pragma once
 
-#include <string>
-#include "Debug.h"
 #include "DataStructures.h"
+#include "Debug.h"
+#include <string>
 
 #include <unordered_map>
 
 class CacheFile
 {
   public:
-    CacheFile(const std::string &cacheFilePath)
+    CacheFile(const std::string& cacheFilePath)
         : path(cacheFilePath)
     {
         if (cacheFilePath == "")
@@ -20,7 +20,7 @@ class CacheFile
 
     std::unordered_map<std::string, TimestampedFile> ReadCachedData(bool ignoreExisting);
 
-    void WriteCacheData(std::unordered_map<std::string, TimestampedFile> &cached, std::vector<TimestampedFile> &uncached);
+    void WriteCacheData(std::unordered_map<std::string, TimestampedFile>& cached, std::vector<TimestampedFile>& uncached);
 
   private:
     std::string path;

@@ -29,9 +29,9 @@
  * SUCH DAMAGE.
  */
 
+#include "PrepareVisitor.h"
 #include "Names.h"
 #include "PrepareParser.h"
-#include "PrepareVisitor.h"
 
 #include <clang/AST/ASTContext.h>
 
@@ -42,9 +42,9 @@ namespace tesla
 {
 
 template <class T>
-void ReportError(ASTContext &Ctx, StringRef Message, T *Subject)
+void ReportError(ASTContext& Ctx, StringRef Message, T* Subject)
 {
-    DiagnosticsEngine &Diag = Ctx.getDiagnostics();
+    DiagnosticsEngine& Diag = Ctx.getDiagnostics();
     // The previous usage of the diagnostics engine was incorrect - the format
     // string passed has to be constant.
     int DiagID = Diag.getCustomDiagID(DiagnosticsEngine::Error, "TESLA");
@@ -52,24 +52,24 @@ void ReportError(ASTContext &Ctx, StringRef Message, T *Subject)
     Diag.Report(Subject->getLocStart(), DiagID) << Subject->getSourceRange();
 }
 
-TeslaVisitor::TeslaVisitor(llvm::StringRef Filename, ASTContext *Context)
+TeslaVisitor::TeslaVisitor(llvm::StringRef Filename, ASTContext* Context)
     : Filename(Filename), Context(Context)
 {
 }
 
 TeslaVisitor::~TeslaVisitor()
 {
-    for (auto *A : Automata)
+    for (auto* A : Automata)
         delete A;
 
-    for (auto *R : Roots)
+    for (auto* R : Roots)
         delete R;
 }
 
-bool TeslaVisitor::VisitCallExpr(CallExpr *E)
+bool TeslaVisitor::VisitCallExpr(CallExpr* E)
 {
 
-    FunctionDecl *F = E->getDirectCallee();
+    FunctionDecl* F = E->getDirectCallee();
     if (!F)
         return true;
 
@@ -99,9 +99,9 @@ bool TeslaVisitor::VisitCallExpr(CallExpr *E)
     return true;
 }
 
-bool TeslaVisitor::VisitFunctionDecl(FunctionDecl *F)
+bool TeslaVisitor::VisitFunctionDecl(FunctionDecl* F)
 {
-    clang::SourceManager &sm(Context->getSourceManager());
+    clang::SourceManager& sm(Context->getSourceManager());
     bool inMainFile = sm.isInMainFile(sm.getExpansionLoc(F->getLocStart()));
 
     // Only analyse non-deleted definitions (i.e. definitions with bodies) and (should we do this?) not imported by includes.
@@ -111,7 +111,7 @@ bool TeslaVisitor::VisitFunctionDecl(FunctionDecl *F)
     functionDefinitions.insert(F->getName());
 
     // We only parse functions that return __tesla_automaton_description*.
-    const Type *RetTy = F->getReturnType().getTypePtr();
+    const Type* RetTy = F->getReturnType().getTypePtr();
     if (!RetTy->isPointerType())
         return true;
 

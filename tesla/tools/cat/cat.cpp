@@ -41,11 +41,10 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/Pass.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_ostream.h>
-#include <llvm/Pass.h>
-
 
 using namespace llvm;
 using namespace tesla;
@@ -57,65 +56,77 @@ cl::list<string> InputFiles(cl::desc("<input files>"),
 
 cl::opt<string> OutputFile("o", cl::desc("<output file>"), cl::init("-"));
 
+int main(int argc, char* argv[])
+{
+    cl::ParseCommandLineOptions(argc, argv);
 
-int
-main(int argc, char *argv[]) {
-  cl::ParseCommandLineOptions(argc, argv);
+    auto& err = llvm::errs();
 
-  auto& err = llvm::errs();
+    ManifestFile Result;
+    std::map<Identifier, const AutomatonDescription*> Automata;
+    std::map<Identifier, const Usage*> Usages;
 
-  ManifestFile Result;
-  std::map<Identifier,const AutomatonDescription*> Automata;
-  std::map<Identifier,const Usage*> Usages;
+    size_t id = 0;
 
-  for (auto& Filename : InputFiles) {
-    std::unique_ptr<Manifest> Manifest(Manifest::load(llvm::errs(),
-                                                Automaton::Unlinked,
-                                                Filename));
-    if (!Manifest) {
-      err << "Unable to read manifest '" << Filename << "'\n";
-      return 1;
+    for (auto& Filename : InputFiles)
+    {
+        std::unique_ptr<Manifest> Manifest(Manifest::load(llvm::errs(),
+                                                          Automaton::Unlinked,
+                                                          Filename));
+        if (!Manifest)
+        {
+            err << "Unable to read manifest '" << Filename << "'\n";
+            return 1;
+        }
+
+        for (auto i : Manifest->AllAutomata())
+        {
+            auto Existing = Automata.find(i.first);
+            if (Existing == Automata.end())
+            {
+                Automata[i.first] = &(*Result.add_automaton() = *i.second);
+            }
+            else if (*Existing->second != *i.second)
+            {
+                // If we already have this automaton, assert that both are
+                // exactly the same.
+                panic("Attempting to cat two files containing automaton '" + ShortName(Existing->first) + "', but these automata are not exactly the same.");
+            }
+        }
+
+        for (auto i : Manifest->RootAutomata())
+        {
+            auto Existing = Usages.find(i->identifier());
+            if (Existing == Usages.end())
+            {
+                ((Usage*)i)->set_uniqueid(id);
+                *Result.add_root() = *i;
+                 ((Usage*)i)->set_uniqueid(0);
+                Usages[i->identifier()] = &(*i);
+                id++;
+            }
+            else if (*Existing->second != *i)
+            {
+                panic("Attempting to cat two files containing root '" + ShortName(i->identifier()) + "', but these roots are not exactly the same.");
+            }
+        }
     }
 
-    for (auto i : Manifest->AllAutomata()) {
-      auto Existing = Automata.find(i.first);
-      if (Existing == Automata.end())
-        Automata[i.first] = &(*Result.add_automaton() = *i.second);
+    string ProtobufText;
+    google::protobuf::TextFormat::PrintToString(Result, &ProtobufText);
 
-      // If we already have this automaton, verify that both are
-      // exactly the same.
-      else if (*Existing->second != *i.second)
-        panic("Attempting to cat two files containing automaton '"
-          + ShortName(Existing->first)
-          + "', but these automata are not exactly the same.");
+    bool UseFile = (OutputFile != "-");
+    std::unique_ptr<raw_fd_ostream> outfile;
+
+    if (UseFile)
+    {
+        std::error_code OutErrorInfo;
+        outfile.reset(new raw_fd_ostream(OutputFile.c_str(), OutErrorInfo, llvm::sys::fs::F_RW));
     }
+    raw_ostream& out = UseFile ? *outfile : llvm::outs();
+    out << ProtobufText;
 
-    for (auto i : Manifest->RootAutomata()) {
-      auto Existing = Usages.find(i->identifier());
-      if (Existing == Usages.end())
-        Usages[i->identifier()] = &(*Result.add_root() = *i);
+    google::protobuf::ShutdownProtobufLibrary();
 
-      else if (*Existing->second != *i)
-        panic("Attempting to cat two files containing root '"
-          + ShortName(i->identifier())
-          + "', but these roots are not exactly the same.");
-    }
-  }
-
-  string ProtobufText;
-  google::protobuf::TextFormat::PrintToString(Result, &ProtobufText);
-
-  bool UseFile = (OutputFile != "-");
-  std::unique_ptr<raw_fd_ostream> outfile;
-
-  if (UseFile) {
-    std::error_code OutErrorInfo;
-    outfile.reset(new raw_fd_ostream(OutputFile.c_str(), OutErrorInfo, llvm::sys::fs::F_RW));
-  }
-  raw_ostream& out = UseFile ? *outfile : llvm::outs();
-  out << ProtobufText;
-
-  google::protobuf::ShutdownProtobufLibrary();
-
-  return 0;
+    return 0;
 }
