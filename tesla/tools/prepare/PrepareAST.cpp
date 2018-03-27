@@ -70,7 +70,7 @@ void TeslaConsumer::HandleTranslationUnit(ASTContext& Context)
 
     if (Visitor.GetAutomata().size() > 0)
     {
-        std::error_code ErrorInfo;
+       /* std::error_code ErrorInfo;
         llvm::raw_fd_ostream Out(OutFile.c_str(), ErrorInfo, llvm::sys::fs::F_RW);
         if (ErrorInfo)
             panic("unable to open '" + OutFile + "': " + ErrorInfo.message());
@@ -97,7 +97,17 @@ void TeslaConsumer::HandleTranslationUnit(ASTContext& Context)
         else
             Result.SerializeToString(&ProtobufText);
 
-        Out << ProtobufText;
+        Out << ProtobufText; */
+
+        for (const AutomatonDescription* automaton : Visitor.GetAutomata())
+        {
+            data.automatonDescriptions.push_back(*automaton);
+        }
+
+        for (const Usage* use : Visitor.RootAutomata())
+        {
+            data.automatonUses.push_back(*use);
+        }
     }
 
     data.definedFunctionNames = std::vector<std::string>(Visitor.GetFunctionDefinitions().begin(), Visitor.GetFunctionDefinitions().end());

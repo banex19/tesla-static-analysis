@@ -1,7 +1,7 @@
-#include <string>
+#include "Debug.h"
 #include <llvm/Support/PrettyStackTrace.h>
 #include <llvm/Support/raw_ostream.h>
-#include "Debug.h"
+#include <string>
 
 #include "Utils.h"
 
@@ -11,7 +11,7 @@ void PanicIfError(std::error_code err)
         tesla::panic(err.message());
 }
 
-void OutputVerbose(const std::string &msg, bool verbose)
+void OutputVerbose(const std::string& msg, bool verbose)
 {
     if (verbose)
     {
@@ -19,17 +19,17 @@ void OutputVerbose(const std::string &msg, bool verbose)
     }
 }
 
-void OutputWarning(const std::string &warning)
+void OutputWarning(const std::string& warning)
 {
     llvm::errs() << "WARNING: " << warning << "\n";
 }
 
-void OutputAlways(const std::string &msg)
+void OutputAlways(const std::string& msg)
 {
     llvm::outs() << msg << "\n";
 }
 
-std::string StringFromVector(const std::vector<std::string> &vec, const std::string &separator)
+std::string StringFromVector(const std::vector<std::string>& vec, const std::string& separator)
 {
     std::string str;
 
@@ -44,7 +44,26 @@ std::string StringFromVector(const std::vector<std::string> &vec, const std::str
     return str;
 }
 
-std::string SanitizeFilename(const std::string &filename)
+std::string StringFromSet(const std::set<std::string>& s, const std::string& separator)
+{
+    std::string str;
+
+    size_t i = 0;
+
+    for (auto& elem : s)
+    {
+        str += elem;
+
+        if (i != s.size() - 1)
+            str += separator + " ";
+
+        ++i;
+    }
+
+    return str;
+}
+
+std::string SanitizeFilename(const std::string& filename)
 {
     std::string newFilename = filename;
     std::replace(newFilename.begin(), newFilename.end(), '.', '-');
