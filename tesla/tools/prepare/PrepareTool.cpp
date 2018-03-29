@@ -35,6 +35,9 @@
 #include <unordered_map>
 #include <vector>
 
+#include <fcntl.h>
+#include <sys/stat.h>
+
 #include "AutomatonParser.h"
 #include "CacheFile.h"
 #include "Utils.h"
@@ -111,6 +114,17 @@ void AddOrMerge(std::map<std::pair<std::string, std::string>, std::set<std::stri
     }
 }
 
+void TouchFile(TimestampedFile& file)
+{
+    timespec currentTime[2];
+    clock_gettime(CLOCK_REALTIME, currentTime);
+    currentTime[1] = currentTime[0];
+
+    utimensat(AT_FDCWD, file.filename.c_str(), currentTime, 0);
+
+    file.timestamp = (size_t)currentTime[0].tv_sec * (1e9) + currentTime[0].tv_nsec;
+}
+
 void TraverseSourcesRec(const std::string& sourceRoot, std::unordered_map<std::string, TimestampedFile>& cached, std::vector<TimestampedFile>& uncached)
 {
     std::error_code err;
@@ -123,6 +137,7 @@ void TraverseSourcesRec(const std::string& sourceRoot, std::unordered_map<std::s
         PanicIfError(err);
 
         std::string path = it->path();
+        path.erase(0, sourceRoot.size());
         std::string lowercasePath = path;
         std::transform(lowercasePath.begin(), lowercasePath.end(), lowercasePath.begin(), ::tolower);
 
@@ -151,7 +166,7 @@ void TraverseSourcesRec(const std::string& sourceRoot, std::unordered_map<std::s
 
                     size_t timestamp = status->getLastModificationTime().time_since_epoch().count();
 
-                    if (cached.find(path) != cached.end() && cached[path].timestamp == timestamp)
+                    if (cached.find(path) != cached.end() && cached[path].timestamp >= timestamp)
                     {
                         OutputVerbose("Found file " + path + " which is already cached and up-to-date", Verbose);
                         cached[path].upToDate = true;
@@ -161,7 +176,7 @@ void TraverseSourcesRec(const std::string& sourceRoot, std::unordered_map<std::s
                     {
                         if (cached.find(path) != cached.end())
                             cached[path].stillExisting = true;
-                            
+
                         uncached.push_back({path, timestamp, false, true});
                         OutputVerbose("Found file " + path + " with timestamp " + std::to_string(timestamp) + " which is not cached and will be updated", Verbose);
                     }
@@ -217,7 +232,7 @@ int main(int argc, const char** argv)
 
     OutputDir += "/";
 
-    std::string OutputFilename = OutputDir + SanitizeFilename("filecache");
+    std::string CacheFilename = OutputDir + SanitizeFilename("filecache");
     std::string AutomataFilename = OutputDir + SanitizeFilename("automatacache");
 
     for (auto& ext : ExtraExtensions)
@@ -230,8 +245,8 @@ int main(int argc, const char** argv)
 
     OutputAlways("The following substrings will be ignored if encountered: " + StringFromVector(exceptions));
 
-    CacheFile cache{OutputFilename};
-    AutomataFile automataCache{AutomataFilename};
+    FileCache cache{CacheFilename};
+    AutomataCache automataCache{AutomataFilename};
 
     auto cachedAutomata = automataCache.ReadAutomata(OverwriteCache);
 
@@ -270,17 +285,7 @@ int main(int argc, const char** argv)
         Tool.run(Factory.get());
 
         // Cache function names.
-        std::ofstream file{OutputDir + SanitizeFilename("DEFS_" + filename), std::ofstream::trunc};
-
-        if (!file)
-            panic("Could not create cache file for " + filename);
-
-        for (auto& def : data.definedFunctionNames)
-        {
-            file << def << "\n";
-        }
-
-        file.close();
+        uncached.functions.insert(data.definedFunctionNames.begin(), data.definedFunctionNames.end());
 
         // Cache automata and affected functions.
         for (auto& automaton : data.automatonDescriptions)
@@ -300,18 +305,49 @@ int main(int argc, const char** argv)
         }
     }
 
-    // Make sure to remove automata that have been either updated or removed.
+    // Make sure to remove from the cache those automata that have been either updated or removed.
     std::unordered_map<std::string, std::vector<AutomatonSummary>> automataStillExisting;
+    std::unordered_map<std::string, std::vector<AutomatonSummary>> removedAutomata;
     for (auto& cached : cachedAutomata)
     {
         if (removedFiles.find(cached.first) == removedFiles.end() && uncachedFilenames.find(cached.first) == uncachedFilenames.end())
             automataStillExisting[cached.first] = cached.second;
+        else
+            removedAutomata[cached.first] = cached.second;
+    }
+
+    // These are all the automata that have been updated or removed.
+    std::vector<AutomatonSummary> updatedAutomata;
+    for (auto& a : automatonFunctions)
+    {
+        updatedAutomata.push_back(AutomatonSummary(a.first.first, a.first.second, a.second));
+    }
+    for (auto& a : removedAutomata)
+    {
+        updatedAutomata.insert(updatedAutomata.begin(), a.second.begin(), a.second.end());
+    }
+
+    // Touch all files that contain either removed automata or new/updated automata.
+    for (auto& a : updatedAutomata)
+    {
+        for (auto& fn : a.affectedFunctions)
+        {
+            for (auto& file : alreadyUpToDate)
+            {
+                if (file.second.functions.find(fn) != file.second.functions.end())
+                {
+                    llvm::outs() << "Found cached file (" + file.first + ") affected by automaton " + a.id << "\n";
+                    TouchFile(file.second);
+                    break;
+                }
+            }
+        }
     }
 
     automataCache.WriteAutomata(automataStillExisting, automatonFunctions);
     cache.WriteCacheData(alreadyUpToDate, uncachedFiles);
 
-    OutputAlways("Cache data written to " + OutputFilename + ":\n\t" +
+    OutputAlways("File cache data written to " + CacheFilename + ":\n\t" +
                  std::to_string(alreadyUpToDate.size()) + " files already in cache\n\t" +
                  std::to_string(uncachedFiles.size()) + " files updated\n\t" +
                  std::to_string(removedFiles.size()) + " files removed from the cache");

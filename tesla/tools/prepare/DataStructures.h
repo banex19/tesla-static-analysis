@@ -9,9 +9,10 @@ struct TimestampedFile
 {
     std::string filename;
     size_t timestamp;
-
     bool upToDate = false;
     bool stillExisting = false;
+
+    std::set<std::string> functions;
 };
 
 struct AutomatonSummary
@@ -20,7 +21,7 @@ struct AutomatonSummary
     {
     }
 
-    AutomatonSummary(std::string& filename, std::string& id, std::set<std::string>& affectedFunctions)
+    AutomatonSummary(const std::string& filename, const std::string& id, const std::set<std::string>& affectedFunctions)
         : filename(filename), id(id), affectedFunctions(affectedFunctions)
     {
     }

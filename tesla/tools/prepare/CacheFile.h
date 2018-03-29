@@ -2,21 +2,17 @@
 
 #include "DataStructures.h"
 #include "Debug.h"
-#include <string>
 #include "Utils.h"
+#include <string>
 
 #include <unordered_map>
 
-class CacheFile
+class FileCache
 {
   public:
-    CacheFile(const std::string& cacheFilePath)
+    FileCache(const std::string& cacheFilePath)
         : path(cacheFilePath)
     {
-        if (cacheFilePath == "")
-        {
-            tesla::panic("Cache filename not specified. Specify a cache file with -o");
-        }
     }
 
     std::unordered_map<std::string, TimestampedFile> ReadCachedData(bool ignoreExisting);
@@ -27,18 +23,18 @@ class CacheFile
     std::string path;
 };
 
-class AutomataFile
+class AutomataCache
 {
   public:
-    AutomataFile(const std::string& path)
+    AutomataCache(const std::string& path)
         : path(path)
     {
     }
 
     std::unordered_map<std::string, std::vector<AutomatonSummary>> ReadAutomata(bool ignoreExisting);
 
-    void WriteAutomata(std::unordered_map<std::string, std::vector<AutomatonSummary>>& cached, 
-                 std::map<std::pair<std::string, std::string>, std::set<std::string>>& uncached);
+    void WriteAutomata(std::unordered_map<std::string, std::vector<AutomatonSummary>>& cached,
+                       std::map<std::pair<std::string, std::string>, std::set<std::string>>& uncached);
 
   private:
     std::string path;

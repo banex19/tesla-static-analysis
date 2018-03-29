@@ -11,7 +11,7 @@ using namespace llvm;
 using namespace llvm::sys::fs;
 using namespace tesla;
 
-std::unordered_map<std::string, TimestampedFile> CacheFile::ReadCachedData(bool ignoreExisting)
+std::unordered_map<std::string, TimestampedFile> FileCache::ReadCachedData(bool ignoreExisting)
 {
     std::unordered_map<std::string, TimestampedFile> cachedFiles;
 
@@ -37,6 +37,8 @@ std::unordered_map<std::string, TimestampedFile> CacheFile::ReadCachedData(bool 
     {
         std::istringstream iss(line);
 
+        std::set<std::string> functions;
+
         std::string sourceFile;
         size_t timestamp;
         if (!(iss >> sourceFile >> timestamp))
@@ -44,7 +46,13 @@ std::unordered_map<std::string, TimestampedFile> CacheFile::ReadCachedData(bool 
             tesla::panic("Cache file malformed - Delete the file \"" + path + "\" and try again");
         }
 
-        cachedFiles[sourceFile] = {sourceFile, timestamp};
+        std::string fn;
+        while (iss >> fn)
+        {
+            functions.insert(fn);
+        }
+
+        cachedFiles[sourceFile] = {sourceFile, timestamp, false, false, functions};
     }
 
     file.close();
@@ -52,31 +60,31 @@ std::unordered_map<std::string, TimestampedFile> CacheFile::ReadCachedData(bool 
     return cachedFiles;
 }
 
-void CacheFile::WriteCacheData(std::unordered_map<std::string, TimestampedFile>& cached, std::vector<TimestampedFile>& uncached)
+void FileCache::WriteCacheData(std::unordered_map<std::string, TimestampedFile>& cached, std::vector<TimestampedFile>& uncached)
 {
     std::ofstream file(path, std::ofstream::trunc);
 
     if (!file)
     {
-        tesla::panic("Could not open output file " + path);
+        tesla::panic("Could not open cache output file " + path + " for writing");
     }
 
     for (auto& f : cached)
     {
-        file << f.second.filename << " " << f.second.timestamp << "\n";
+        file << f.second.filename << " " << f.second.timestamp << " " << StringFromSet(f.second.functions, " ") << " \n";
     }
 
     for (auto& f : uncached)
     {
-        file << f.filename << " " << f.timestamp << "\n";
+        file << f.filename << " " << f.timestamp << " " << StringFromSet(f.functions, " ") << " \n";
     }
 
     file.close();
 }
 
-std::unordered_map<std::string,  std::vector<AutomatonSummary>> AutomataFile::ReadAutomata(bool ignoreExisting)
+std::unordered_map<std::string, std::vector<AutomatonSummary>> AutomataCache::ReadAutomata(bool ignoreExisting)
 {
-    std::unordered_map<std::string,  std::vector<AutomatonSummary>> cached;
+    std::unordered_map<std::string, std::vector<AutomatonSummary>> cached;
 
     std::ifstream file(path);
 
@@ -106,7 +114,7 @@ std::unordered_map<std::string,  std::vector<AutomatonSummary>> AutomataFile::Re
         std::string id;
         if (!(iss >> sourceFile >> id))
         {
-            tesla::panic("Cache file malformed - Delete the file \"" + path + "\" and try again");
+            tesla::panic("Automata cache file malformed - Delete the file \"" + path + "\" and try again");
         }
 
         std::string fn;
@@ -123,14 +131,14 @@ std::unordered_map<std::string,  std::vector<AutomatonSummary>> AutomataFile::Re
     return cached;
 }
 
-void AutomataFile::WriteAutomata(std::unordered_map<std::string, std::vector<AutomatonSummary>>& cached,
-                                 std::map<std::pair<std::string, std::string>, std::set<std::string>>& uncached)
+void AutomataCache::WriteAutomata(std::unordered_map<std::string, std::vector<AutomatonSummary>>& cached,
+                                  std::map<std::pair<std::string, std::string>, std::set<std::string>>& uncached)
 {
     std::ofstream file(path, std::ofstream::trunc);
 
     if (!file)
     {
-        tesla::panic("Could not open output file " + path);
+        tesla::panic("Could not open automata cache output file " + path + " for writing");
     }
 
     for (auto& f : cached)

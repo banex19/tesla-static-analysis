@@ -38,7 +38,7 @@ std::string StringFromVector(const std::vector<std::string>& vec, const std::str
         str += vec[i];
 
         if (i != vec.size() - 1)
-            str += separator + " ";
+            str += separator;
     }
 
     return str;
@@ -55,7 +55,7 @@ std::string StringFromSet(const std::set<std::string>& s, const std::string& sep
         str += elem;
 
         if (i != s.size() - 1)
-            str += separator + " ";
+            str += separator;
 
         ++i;
     }
