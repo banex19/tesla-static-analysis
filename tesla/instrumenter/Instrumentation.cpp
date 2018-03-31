@@ -326,7 +326,6 @@ void tesla::UpdateState(const Automaton& A, uint32_t Symbol, Value *Key,
       KeyStar     // pattern
   )); 
 
-
   std::vector<Value*> Args;
   Args.push_back(TeslaContext(A.getAssertion().context(), Ctx));
   Args.push_back(ExternAutomatonDescrip(&A, M));

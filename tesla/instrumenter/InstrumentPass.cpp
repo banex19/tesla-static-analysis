@@ -11,6 +11,7 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Support/raw_ostream.h>
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 using namespace llvm;
 
@@ -57,3 +58,22 @@ char InstrumentPass::ID = 0;
 static RegisterPass<InstrumentPass> X("tesla-instrument", "Instrument IR with TESLA");
 
 }
+
+// Register the pass both for when no optimizations and all optimizations are enabled.
+static void registerInstrumentPass(const PassManagerBuilder &,
+	legacy::PassManagerBase &PM) {
+	PM.add(new InstrumentPass());
+}
+
+static void registerInstrumentPassOpt(const PassManagerBuilder &,
+	legacy::PassManagerBase &PM) {
+	PM.add(new InstrumentPass());
+}
+
+static RegisterStandardPasses
+RegisterMyPass(PassManagerBuilder::EP_EnabledOnOptLevel0,
+	registerInstrumentPass);
+
+static RegisterStandardPasses
+RegisterMyPassOpt(PassManagerBuilder::EP_ModuleOptimizerEarly,
+	registerInstrumentPassOpt);

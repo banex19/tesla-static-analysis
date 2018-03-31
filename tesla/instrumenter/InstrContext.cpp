@@ -174,7 +174,7 @@ Constant* InstrContext::BuildAutomatonDescription(const Automaton *A) {
   bool externalDeclaration = false;
  
   if (Existing)
-   externalDeclaration = !Existing->hasInitializer();
+   externalDeclaration = !Existing->hasDefinitiveInitializer();
 
   if (Existing && !externalDeclaration)
         return Existing;
@@ -495,9 +495,13 @@ Constant* InstrContext::ExternalDescription(const Automaton& A) {
   GlobalVariable *Existing = M.getGlobalVariable(A.Name());
   if (Existing)
     return Existing;
+    
+  auto* nullPtr = ConstantPointerNull::get(AutomatonPtrTy);
 
-  return new GlobalVariable(M, AutomatonTy, true, GlobalValue::ExternalLinkage,
-                            NULL, A.Name());
+  auto* global = new GlobalVariable(M, AutomatonTy, true, GlobalValue::WeakAnyLinkage,
+                            nullPtr, A.Name());
+
+  return global;
 }
 
 

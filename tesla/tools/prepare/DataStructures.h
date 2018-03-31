@@ -33,8 +33,15 @@ struct AutomatonSummary
 
 struct CollectedData
 {
+    CollectedData(tesla::ManifestFile& result)
+        : result(result)
+    {
+    }
+
     std::vector<std::string> definedFunctionNames;
 
     std::vector<tesla::AutomatonDescription> automatonDescriptions;
     std::vector<tesla::Usage> automatonUses;
+
+    tesla::ManifestFile& result;
 };

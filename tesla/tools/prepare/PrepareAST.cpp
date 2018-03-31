@@ -63,8 +63,6 @@ void TeslaConsumer::HandleTranslationUnit(ASTContext& Context)
 {
     TeslaVisitor Visitor{InFile, &Context};
 
-    Visitor.TraverseDecl(Context.getTranslationUnitDecl());
-
     if (!Visitor.TraverseDecl(Context.getTranslationUnitDecl()))
         panic("error analysing '" + InFile + "'");
 
@@ -73,31 +71,16 @@ void TeslaConsumer::HandleTranslationUnit(ASTContext& Context)
        /* std::error_code ErrorInfo;
         llvm::raw_fd_ostream Out(OutFile.c_str(), ErrorInfo, llvm::sys::fs::F_RW);
         if (ErrorInfo)
-            panic("unable to open '" + OutFile + "': " + ErrorInfo.message());
+            panic("unable to open '" + OutFile + "': " + ErrorInfo.message()); */
 
-        ManifestFile Result;
+        ManifestFile& Result = data.result;
         for (const AutomatonDescription* A : Visitor.GetAutomata())
             *Result.add_automaton() = *A;
 
-        size_t id = 0;
         for (const Usage* U : Visitor.RootAutomata())
         {
-            Usage* usage = const_cast<Usage*>(U);
-
-            usage->set_uniqueid(id);
-            *Result.add_root() = *usage;
-
-            id++;
+            *Result.add_root() = *U;
         }
-
-        string ProtobufText;
-
-        if (UseTextFormat)
-            google::protobuf::TextFormat::PrintToString(Result, &ProtobufText);
-        else
-            Result.SerializeToString(&ProtobufText);
-
-        Out << ProtobufText; */
 
         for (const AutomatonDescription* automaton : Visitor.GetAutomata())
         {

@@ -2,6 +2,7 @@
 #include <llvm/Support/PrettyStackTrace.h>
 #include <llvm/Support/raw_ostream.h>
 #include <string>
+#include <iostream>
 
 #include "Utils.h"
 
@@ -71,4 +72,15 @@ std::string SanitizeFilename(const std::string& filename)
     std::replace(newFilename.begin(), newFilename.end(), '\\', '_');
 
     return newFilename;
+}
+
+std::string GetFullPath(const std::string& OutputDir, const std::string& filename)
+{
+    return OutputDir + filename;
+}
+
+std::string GetRelativePath(const std::string& OutputDir, const std::string& filename)
+{
+    std::string rel = filename;
+    return rel.erase(0, OutputDir.size());
 }

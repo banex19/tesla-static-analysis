@@ -3,9 +3,9 @@
 #include <algorithm>
 #include <llvm/Support/PrettyStackTrace.h>
 #include <llvm/Support/raw_ostream.h>
+#include <set>
 #include <string>
 #include <vector>
-#include <set>
 
 void PanicIfError(std::error_code err);
 
@@ -19,3 +19,5 @@ std::string StringFromVector(const std::vector<std::string>& vec, const std::str
 std::string StringFromSet(const std::set<std::string>& s, const std::string& separator = ", ");
 
 std::string SanitizeFilename(const std::string& filename);
+std::string GetFullPath(const std::string& OutputDir, const std::string& filename);
+std::string GetRelativePath(const std::string& OutputDir, const std::string& filename);

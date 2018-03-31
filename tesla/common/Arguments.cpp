@@ -5,27 +5,30 @@
 
 #include "Automaton.h"
 #include "Debug.h"
-#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/DebugInfoMetadata.h"
+#include "llvm/IR/IntrinsicInst.h"
+
+#include <llvm/Support/FileSystem.h>
 
 using namespace llvm;
+using namespace llvm::sys::fs;
 
 using std::string;
 using std::vector;
 
-const DILocalVariable *findVar(const Value *V, const Function *F)
+const DILocalVariable* findVar(const Value* V, const Function* F)
 {
-    for (auto &block : *F)
+    for (auto& block : *F)
     {
-        for (auto &instr : block)
+        for (auto& instr : block)
         {
-            const Instruction *I = &instr;
-            if (const DbgDeclareInst *DbgDeclare = dyn_cast<DbgDeclareInst>(I))
+            const Instruction* I = &instr;
+            if (const DbgDeclareInst* DbgDeclare = dyn_cast<DbgDeclareInst>(I))
             {
                 if (DbgDeclare->getAddress() == V)
                     return DbgDeclare->getVariable();
             }
-            else if (const DbgValueInst *DbgValue = dyn_cast<DbgValueInst>(I))
+            else if (const DbgValueInst* DbgValue = dyn_cast<DbgValueInst>(I))
             {
                 if (DbgValue->getValue() == V)
                     return DbgValue->getVariable();
@@ -35,9 +38,9 @@ const DILocalVariable *findVar(const Value *V, const Function *F)
     return nullptr;
 }
 
-std::pair<Value *, std::string> GetValueName(DbgDeclareInst *v)
+std::pair<Value*, std::string> GetValueName(DbgDeclareInst* v)
 {
-    Value *varValue = nullptr;
+    Value* varValue = nullptr;
 
     varValue = v->getAddress();
 
@@ -51,9 +54,9 @@ std::pair<Value *, std::string> GetValueName(DbgDeclareInst *v)
     return std::make_pair(nullptr, "");
 }
 
-std::pair<Value *, std::string> GetValueName(DbgValueInst *v)
+std::pair<Value*, std::string> GetValueName(DbgValueInst* v)
 {
-    Value *varValue = nullptr;
+    Value* varValue = nullptr;
 
     varValue = v->getValue();
 
@@ -67,27 +70,27 @@ std::pair<Value *, std::string> GetValueName(DbgValueInst *v)
     return std::make_pair(nullptr, "");
 }
 
-vector<Value *> tesla::CollectArgs(
-    Instruction *Before, vector<tesla::Argument> args,
-    Module &Mod, IRBuilder<> &Builder)
+vector<Value*> tesla::CollectArgs(
+    Instruction* Before, vector<tesla::Argument> args,
+    Module& Mod, IRBuilder<>& Builder)
 {
     // Find named values to be passed to instrumentation.
-    std::map<string, Value *> ValuesInScope;
+    std::map<string, Value*> ValuesInScope;
     for (auto G = Mod.global_begin(); G != Mod.global_end(); G++)
         ValuesInScope[G->getName()] = &*G;
 
-    auto *Fn = Before->getParent()->getParent();
+    auto* Fn = Before->getParent()->getParent();
 
-    for (auto &Arg : Fn->args())
+    for (auto& Arg : Fn->args())
     {
 
         ValuesInScope[Arg.getName()] = &Arg;
     }
 
-    auto &EntryBlock(*Fn->begin());
-    for (auto &I : EntryBlock)
+    auto& EntryBlock(*Fn->begin());
+    for (auto& I : EntryBlock)
     {
-        auto *Inst = dyn_cast<DbgDeclareInst>(&I);
+        auto* Inst = dyn_cast<DbgDeclareInst>(&I);
         if (Inst)
         {
             auto valName = GetValueName(Inst);
@@ -99,7 +102,7 @@ vector<Value *> tesla::CollectArgs(
         }
         else
         {
-            auto *Inst = dyn_cast<DbgValueInst>(&I);
+            auto* Inst = dyn_cast<DbgValueInst>(&I);
             if (Inst)
             {
                 auto valName = GetValueName(Inst);
@@ -116,13 +119,13 @@ vector<Value *> tesla::CollectArgs(
     }
 
     int ArgSize = 0;
-    for (auto &Arg : args)
+    for (auto& Arg : args)
         if (!Arg.free())
             ArgSize = std::max(ArgSize + 1, Arg.index());
 
-    vector<Value *> Args(ArgSize, NULL);
+    vector<Value*> Args(ArgSize, NULL);
 
-    for (auto &Arg : args)
+    for (auto& Arg : args)
     {
         if (Arg.free())
             continue;
@@ -153,9 +156,9 @@ vector<Value *> tesla::CollectArgs(
     return Args;
 }
 
-vector<Value *> tesla::CollectArgs(
-    Instruction *Before, const Automaton &A,
-    Module &Mod, IRBuilder<> &Builder)
+vector<Value*> tesla::CollectArgs(
+    Instruction* Before, const Automaton& A,
+    Module& Mod, IRBuilder<>& Builder)
 {
 
     vector<Argument> newArgs;
@@ -165,8 +168,8 @@ vector<Value *> tesla::CollectArgs(
     return tesla::CollectArgs(Before, newArgs, Mod, Builder);
 }
 
-Value *tesla::GetArgumentValue(Value *Param, const Argument &ArgDescrip,
-                               IRBuilder<> &Builder, bool AtAssertionSite)
+Value* tesla::GetArgumentValue(Value* Param, const Argument& ArgDescrip,
+                               IRBuilder<>& Builder, bool AtAssertionSite)
 {
 
     switch (ArgDescrip.type())
@@ -192,9 +195,9 @@ Value *tesla::GetArgumentValue(Value *Param, const Argument &ArgDescrip,
         if (!AtAssertionSite)
             return Param;
 
-        const StructField &Field = ArgDescrip.field();
-        const Argument &BaseArg = Field.base();
-        auto *Base = GetArgumentValue(Param, BaseArg, Builder, AtAssertionSite);
+        const StructField& Field = ArgDescrip.field();
+        const Argument& BaseArg = Field.base();
+        auto* Base = GetArgumentValue(Param, BaseArg, Builder, AtAssertionSite);
 
         string Name = ((Base->hasName()
                             ? Base->getName()
@@ -211,7 +214,7 @@ Value *tesla::GetArgumentValue(Value *Param, const Argument &ArgDescrip,
 }
 
 void tesla::ParseAssertionLocation(
-    Location *Loc, const CallInst *Call)
+    Location* Loc, const CallInst* Call)
 {
 
     assert(Call->getCalledFunction()->getName() == INLINE_ASSERTION);
@@ -220,7 +223,7 @@ void tesla::ParseAssertionLocation(
         panic("TESLA assertion must have at least 4 arguments");
 
     // The filename (argument 1) should be a global variable.
-    GlobalVariable *NameVar =
+    GlobalVariable* NameVar =
         dyn_cast<GlobalVariable>(Call->getOperand(1)->stripPointerCasts());
 
     if (!NameVar)
@@ -251,6 +254,18 @@ void tesla::ParseAssertionLocation(
         panic("unable to parse filename from TESLA assertion");
     }
 
+    llvm::SmallVector<char, 200> currentPath;
+    current_path(currentPath);
+
+    std::string fullPath;
+    for (size_t i = 0; i < currentPath.size(); ++i)
+    {
+        if (currentPath[i] == '\0')
+            break;
+
+        fullPath.push_back(currentPath[i]);
+    }
+
     // This is a hack - getAsString gives us a string with a null terminator
     // attached, but this gets implicitly removed when serialising. Therefore when
     // comparing an in-memory location with one loaded from disk, the comparison
@@ -261,10 +276,12 @@ void tesla::ParseAssertionLocation(
         fn = fn.substr(0, fn.size() - 1);
     }
 
-    *Loc->mutable_filename() = fn;
+    fullPath = fullPath + "/" + fn;
+
+    *Loc->mutable_filename() = fullPath;
 
     // The line and counter values should be constant integers.
-    ConstantInt *Line = dyn_cast<ConstantInt>(Call->getOperand(2));
+    ConstantInt* Line = dyn_cast<ConstantInt>(Call->getOperand(2));
     if (!Line)
     {
         Call->getOperand(2)->dump();
@@ -273,7 +290,7 @@ void tesla::ParseAssertionLocation(
 
     Loc->set_line(Line->getLimitedValue(std::numeric_limits<int32_t>::max()));
 
-    ConstantInt *Count = dyn_cast<ConstantInt>(Call->getOperand(3));
+    ConstantInt* Count = dyn_cast<ConstantInt>(Call->getOperand(3));
     if (!Count)
     {
         Call->getOperand(3)->dump();
@@ -283,7 +300,7 @@ void tesla::ParseAssertionLocation(
     Loc->set_counter(Count->getLimitedValue(std::numeric_limits<int32_t>::max()));
 }
 
-llvm::Function *calledOrCastFunction(const llvm::CallInst *ci)
+llvm::Function* calledOrCastFunction(const llvm::CallInst* ci)
 {
     auto num = ci->getNumOperands() - 1;
     if (auto cst = llvm::dyn_cast<llvm::ConstantExpr>(ci->getOperand(num)))

@@ -143,6 +143,9 @@ tesla_update_state(enum tesla_context tesla_context,
 	const struct tesla_automaton *autom, uint32_t symbol,
 	const struct tesla_key *pattern)
 {
+    if (autom == NULL) // Nothing to do if there is no automaton. This is the case when linking to a program with no assertions.
+        return;
+
 	struct tesla_store *store;
 	int ret = tesla_store_get(tesla_context, TESLA_MAX_CLASSES,
 			TESLA_MAX_INSTANCES, &store);

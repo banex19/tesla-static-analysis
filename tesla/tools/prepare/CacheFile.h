@@ -10,8 +10,8 @@
 class FileCache
 {
   public:
-    FileCache(const std::string& cacheFilePath)
-        : path(cacheFilePath)
+    FileCache(const std::string& BaseDir, const std::string& cacheFilePath)
+        : BaseDir(BaseDir), path(cacheFilePath)
     {
     }
 
@@ -21,21 +21,23 @@ class FileCache
 
   private:
     std::string path;
+    std::string BaseDir;
 };
 
 class AutomataCache
 {
   public:
-    AutomataCache(const std::string& path)
-        : path(path)
+    AutomataCache(const std::string& BaseDir, const std::string& path)
+        : BaseDir(BaseDir), path(path)
     {
     }
 
-    std::unordered_map<std::string, std::vector<AutomatonSummary>> ReadAutomata(bool ignoreExisting);
+    std::unordered_map<std::string, std::vector<AutomatonSummary>> ReadAutomataCache(bool ignoreExisting);
 
-    void WriteAutomata(std::unordered_map<std::string, std::vector<AutomatonSummary>>& cached,
-                       std::map<std::pair<std::string, std::string>, std::set<std::string>>& uncached);
+    void WriteAutomataCache(std::unordered_map<std::string, std::vector<AutomatonSummary>>& cached,
+                            std::map<std::pair<std::string, std::string>, std::set<std::string>>& uncached);
 
   private:
     std::string path;
+    std::string BaseDir;
 };

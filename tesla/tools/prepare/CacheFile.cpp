@@ -52,6 +52,8 @@ std::unordered_map<std::string, TimestampedFile> FileCache::ReadCachedData(bool 
             functions.insert(fn);
         }
 
+        sourceFile = GetFullPath(BaseDir, sourceFile);
+
         cachedFiles[sourceFile] = {sourceFile, timestamp, false, false, functions};
     }
 
@@ -71,18 +73,18 @@ void FileCache::WriteCacheData(std::unordered_map<std::string, TimestampedFile>&
 
     for (auto& f : cached)
     {
-        file << f.second.filename << " " << f.second.timestamp << " " << StringFromSet(f.second.functions, " ") << " \n";
+        file << GetRelativePath(BaseDir, f.second.filename) << " " << f.second.timestamp << " " << StringFromSet(f.second.functions, " ") << " \n";
     }
 
     for (auto& f : uncached)
     {
-        file << f.filename << " " << f.timestamp << " " << StringFromSet(f.functions, " ") << " \n";
+        file << GetRelativePath(BaseDir, f.filename) << " " << f.timestamp << " " << StringFromSet(f.functions, " ") << " \n";
     }
 
     file.close();
 }
 
-std::unordered_map<std::string, std::vector<AutomatonSummary>> AutomataCache::ReadAutomata(bool ignoreExisting)
+std::unordered_map<std::string, std::vector<AutomatonSummary>> AutomataCache::ReadAutomataCache(bool ignoreExisting)
 {
     std::unordered_map<std::string, std::vector<AutomatonSummary>> cached;
 
@@ -123,6 +125,8 @@ std::unordered_map<std::string, std::vector<AutomatonSummary>> AutomataCache::Re
             affectedFunctions.insert(fn);
         }
 
+        sourceFile = GetFullPath(BaseDir, sourceFile);
+
         cached[sourceFile].push_back(AutomatonSummary(sourceFile, id, affectedFunctions));
     }
 
@@ -131,8 +135,8 @@ std::unordered_map<std::string, std::vector<AutomatonSummary>> AutomataCache::Re
     return cached;
 }
 
-void AutomataCache::WriteAutomata(std::unordered_map<std::string, std::vector<AutomatonSummary>>& cached,
-                                  std::map<std::pair<std::string, std::string>, std::set<std::string>>& uncached)
+void AutomataCache::WriteAutomataCache(std::unordered_map<std::string, std::vector<AutomatonSummary>>& cached,
+                                       std::map<std::pair<std::string, std::string>, std::set<std::string>>& uncached)
 {
     std::ofstream file(path, std::ofstream::trunc);
 
@@ -145,13 +149,13 @@ void AutomataCache::WriteAutomata(std::unordered_map<std::string, std::vector<Au
     {
         for (auto& a : f.second)
         {
-            file << a.filename << " " << a.id << " " << StringFromSet(a.affectedFunctions, " ") << " \n";
+            file << GetRelativePath(BaseDir, a.filename) << " " << a.id << " " << StringFromSet(a.affectedFunctions, " ") << " \n";
         }
     }
 
     for (auto& f : uncached)
     {
-        file << f.first.first << " " << f.first.second << " " << StringFromSet(f.second, " ") << " \n";
+        file << GetRelativePath(BaseDir, f.first.first) << " " << f.first.second << " " << StringFromSet(f.second, " ") << " \n";
     }
 
     file.close();

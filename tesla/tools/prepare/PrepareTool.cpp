@@ -137,7 +137,6 @@ void TraverseSourcesRec(const std::string& sourceRoot, std::unordered_map<std::s
         PanicIfError(err);
 
         std::string path = it->path();
-        path.erase(0, sourceRoot.size());
         std::string lowercasePath = path;
         std::transform(lowercasePath.begin(), lowercasePath.end(), lowercasePath.begin(), ::tolower);
 
@@ -168,7 +167,7 @@ void TraverseSourcesRec(const std::string& sourceRoot, std::unordered_map<std::s
 
                     if (cached.find(path) != cached.end() && cached[path].timestamp >= timestamp)
                     {
-                        OutputVerbose("Found file " + path + " which is already cached and up-to-date", Verbose);
+                    //    OutputVerbose("Found file " + path + " which is already cached and up-to-date", Verbose);
                         cached[path].upToDate = true;
                         cached[path].stillExisting = true;
                     }
@@ -233,7 +232,8 @@ int main(int argc, const char** argv)
     OutputDir += "/";
 
     std::string CacheFilename = OutputDir + SanitizeFilename("filecache");
-    std::string AutomataFilename = OutputDir + SanitizeFilename("automatacache");
+    std::string AutomataCacheFilename = OutputDir + SanitizeFilename("automatacache");
+    std::string AutomataFilename = OutputDir + "automata.tesla";
 
     for (auto& ext : ExtraExtensions)
         extensions.push_back(ext);
@@ -245,10 +245,11 @@ int main(int argc, const char** argv)
 
     OutputAlways("The following substrings will be ignored if encountered: " + StringFromVector(exceptions));
 
-    FileCache cache{CacheFilename};
-    AutomataCache automataCache{AutomataFilename};
+    FileCache cache{SourceRoot, CacheFilename};
+    AutomataCache automataCache{SourceRoot, AutomataCacheFilename};
+    ManifestFile result;
 
-    auto cachedAutomata = automataCache.ReadAutomata(OverwriteCache);
+    auto cachedAutomata = automataCache.ReadAutomataCache(OverwriteCache);
 
     auto cachedFiles = cache.ReadCachedData(OverwriteCache);
     auto uncachedFiles = TraverseSources(SourceRoot, cachedFiles);
@@ -276,7 +277,7 @@ int main(int argc, const char** argv)
 
         uncachedFilenames[filename] = true;
 
-        CollectedData data;
+        CollectedData data{result};
 
         std::unique_ptr<TeslaActionFactory> Factory(new TeslaActionFactory(data, OutputDir + SanitizeFilename("TESLA_" + filename)));
 
@@ -336,7 +337,7 @@ int main(int argc, const char** argv)
             {
                 if (file.second.functions.find(fn) != file.second.functions.end())
                 {
-                    llvm::outs() << "Found cached file (" + file.first + ") affected by automaton " + a.id << "\n";
+                    OutputVerbose("Found cached file (" + file.first + ") affected by automaton " + a.id, Verbose);
                     TouchFile(file.second);
                     break;
                 }
@@ -344,7 +345,57 @@ int main(int argc, const char** argv)
         }
     }
 
-    automataCache.WriteAutomata(automataStillExisting, automatonFunctions);
+    // Read all automata (that have not been updated or removed).
+    for (auto& a : automataStillExisting)
+    {
+        CollectedData data{result};
+
+        std::unique_ptr<TeslaActionFactory> Factory(new TeslaActionFactory(data, OutputDir + SanitizeFilename("TESLA_" + a.first)));
+
+        ClangTool Tool(*Compilations, std::vector<std::string>{a.first});
+
+        Tool.run(Factory.get());
+    }
+
+    // Output automata.
+    size_t id = 0;
+    for (auto& a : *result.mutable_root())
+    {
+        a.set_uniqueid(id);
+        id++;
+    }
+
+    std::string protobufText;
+
+    result.SerializeToString(&protobufText);
+
+    std::ofstream file(AutomataFilename, std::ofstream::trunc);
+
+    if (!file)
+    {
+        tesla::panic("Could not open automata output file " + AutomataFilename + " for writing");
+    }
+
+    file << protobufText;
+
+    file.close();
+
+    std::ofstream readableFile(AutomataFilename + ".human", std::ofstream::trunc);
+
+    if (!readableFile)
+    {
+        tesla::panic("Could not open automata output file " + AutomataFilename + " for writing");
+    }
+
+    std::string readableText;
+    google::protobuf::TextFormat::PrintToString(result, &readableText);
+
+    readableFile << readableText;
+
+    readableFile.close();
+
+    // Output cache.
+    automataCache.WriteAutomataCache(automataStillExisting, automatonFunctions);
     cache.WriteCacheData(alreadyUpToDate, uncachedFiles);
 
     OutputAlways("File cache data written to " + CacheFilename + ":\n\t" +
