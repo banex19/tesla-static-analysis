@@ -12,37 +12,45 @@ const size_t ELEM_SIZE = 150;
 
 void TestAllocFree()
 {
-    TeslaAllocator allocator{150, 25};
+    TeslaAllocator allocator;
+    if (!TeslaAllocator_Create(150, 25, &allocator))
+        assert(false && "Could not allocate memory");
 
-    uint8_t* firstElem = (uint8_t*)allocator.Allocate();
-    uint8_t* secondElem = (uint8_t*)allocator.Allocate();
-    uint8_t* thirdElem = (uint8_t*)allocator.Allocate();
+    uint8_t* firstElem = (uint8_t*)TeslaAllocator_Allocate(&allocator);
+    uint8_t* secondElem = (uint8_t*)TeslaAllocator_Allocate(&allocator);
+    uint8_t* thirdElem = (uint8_t*)TeslaAllocator_Allocate(&allocator);
 
     //  printf("first: %p\nsecond:%p\nthird:%p\n", firstElem, secondElem, thirdElem);
 
     assert(secondElem - firstElem == ELEM_SIZE);
     assert(thirdElem - secondElem == ELEM_SIZE);
 
-    allocator.Free(secondElem);
-    uint8_t* secondAgain = (uint8_t*)allocator.Allocate();
+    TeslaAllocator_Free(&allocator, secondElem);
+    uint8_t* secondAgain = (uint8_t*)TeslaAllocator_Allocate(&allocator);
     assert(secondElem == secondAgain);
 
-    allocator.Free(firstElem);
-    allocator.Free(thirdElem);
+    TeslaAllocator_Free(&allocator, firstElem);
+    TeslaAllocator_Free(&allocator, thirdElem);
 
-    uint8_t* firstAgain = (uint8_t*)allocator.Allocate();
+    uint8_t* firstAgain = (uint8_t*)TeslaAllocator_Allocate(&allocator);
     assert(firstElem == firstAgain);
+
+    TeslaAllocator_Destroy(&allocator);
 }
 
 void TestMany()
 {
-    TeslaAllocator allocator{150, 32};
+    TeslaAllocator allocator;
+    if (!TeslaAllocator_Create(150, 32, &allocator))
+    {
+        assert(false && "Could not allocate memory");
+    }
 
     std::vector<uint8_t*> elems;
 
     for (size_t i = 0; i < 20; ++i)
     {
-        elems.push_back((uint8_t*)allocator.Allocate());
+        elems.push_back((uint8_t*)TeslaAllocator_Allocate(&allocator));
     }
 
     for (size_t i = 1; i < 16; ++i)
@@ -57,12 +65,14 @@ void TestMany()
         assert(elems[i] - elems[i - 1] == ELEM_SIZE);
     }
 
-    allocator.Free(elems[0]);
-    elems.push_back((uint8_t*)allocator.Allocate());
+    TeslaAllocator_Free(&allocator, elems[0]);
+    elems.push_back((uint8_t*)TeslaAllocator_Allocate(&allocator));
     assert(elems[20] == elems[0]);
 
-    elems.push_back((uint8_t*)allocator.Allocate());
+    elems.push_back((uint8_t*)TeslaAllocator_Allocate(&allocator));
     assert(elems[21] - elems[19] == ELEM_SIZE);
+
+    TeslaAllocator_Destroy(&allocator);
 }
 
 int main()

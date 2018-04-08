@@ -7,6 +7,7 @@ set(CMAKE_BUILD_TYPE Debug)
 # Provide access to internal headers.
 include_directories(../src)
 include_directories(../thintesla)
+include_directories(../c_thintesla)
 
 set(TESTS
 	actions.cpp
@@ -17,6 +18,7 @@ set(TESTS
 	update.cpp
     allocator.cpp
     hashtable.cpp
+    thintesla_logic.cpp
 )
 
 # Ignore "unused parameter 'int argc'" warnings in test programs.
@@ -26,6 +28,7 @@ foreach(test ${TESTS})
 	add_executable(${test}.test ${test})
 	target_link_libraries(${test}.test tesla)
     target_link_libraries(${test}.test thintesla)
+    target_link_libraries(${test}.test cthintesla)
 
 	if( ${CMAKE_SYSTEM_NAME} MATCHES FreeBSD )
 		target_link_libraries(${test}.test ${EXECINFO_LIBRARY})
@@ -42,4 +45,4 @@ add_custom_target(libtesla-test
 		${LIT_EXTRA}
 	COMMENT "Testing libtesla")
 
-add_dependencies(libtesla-test tesla-get-triple tesla thintesla)
+add_dependencies(libtesla-test tesla-get-triple tesla cthintesla thintesla)

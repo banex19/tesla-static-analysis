@@ -7,25 +7,33 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "TeslaUtils.h"
-
+#ifndef __cplusplus
 typedef size_t uint64_t;
+typedef enum { false, true } bool;
+#endif
+
+#ifdef __cplusplus
+#define EXTERN_C extern "C" {
+#define EXTERN_C_END }
+#else
+#define EXTERN_C
+#define EXTERN_C_END
+#endif
 
 #ifdef _DEBUG
 #define DEBUG_ASSERT(x) \
     do                  \
     {                   \
         assert(x);      \
-    } while (false)
+    } while (0)
 #else
 #define DEBUG_ASSERT(x)
 #endif
 
-#if true
 #define SAFE_ASSERT(x) \
     do                 \
     {                  \
         assert(x);     \
-    } while (false)
-#endif
+    } while (0)
+
 

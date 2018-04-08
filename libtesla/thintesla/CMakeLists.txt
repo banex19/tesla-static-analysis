@@ -7,7 +7,6 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN 0)
 add_library(thintesla SHARED
     TeslaAssertionBuilder.cpp
     TeslaInstrument.cpp
-    TeslaAllocator.cpp
     TeslaUtils.cpp
     TeslaHashTable.cpp
     MurmurHash3.cpp
