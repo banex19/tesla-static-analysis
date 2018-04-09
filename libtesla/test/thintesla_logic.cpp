@@ -438,6 +438,7 @@ typedef bool (*fntype)(int, TeslaAutomaton*, TeslaEvent*);
 fntype fns[10] = {a, b, c, d, e};
 
 void Fuzz(TeslaAutomaton* automaton, TeslaEvent* events, size_t numEvents, TeslaAutomaton* initialAutomaton, TeslaEvent* initialState,
+          std::vector<std::vector<size_t>> possibleStates,
           size_t maxRandomEvents, size_t numTests, bool alwaysCorrect, size_t seed = 0)
 {
     std::random_device rd;
@@ -497,15 +498,37 @@ void Fuzz(TeslaAutomaton* automaton, TeslaEvent* events, size_t numEvents, Tesla
                         }
                         else
                         {
+                            cout << "As expected event " << numExpected << "\n";
                             break;
                         }
 
                         if (numExpected == 0)
                         {
+                            cout << "Should fail\n";
                             expectTrue = false;
                             break;
                         }
                     }
+
+                    if (!expectTrue)
+                        break;
+                }
+
+                if (expectTrue && possibleStates.size() > 0)
+                {
+                    bool confirmed = false;
+                    for (auto& possible : possibleStates)
+                    {
+                        if (stack.size() < possible.size())
+                            continue;
+                        std::vector<size_t> tail(stack.end() - possible.size(), stack.end());
+                        confirmed = (tail == possible);
+
+                        if (confirmed)
+                            break;
+                    }
+
+                    assert(confirmed);
                 }
 
                 bool result = assertion(0, automaton, events + (numEvents - 1));
@@ -619,8 +642,14 @@ void FuzzTest()
     initialState[2].numSuccessors = 2;
     initialState[2].successors = successors[2].data();
 
+    std::vector<std::vector<size_t>> possibleEndings;
+    possibleEndings.push_back({0, 1, 2, 3});
+    possibleEndings.push_back({0, 2, 3});
+    possibleEndings.push_back({0, 1, 2});
+    possibleEndings.push_back({0, 2});
+
     for (size_t i = 0; i < 10; ++i)
-        Fuzz(&automaton, events, numEvents, &initialAutomaton, initialState,
+        Fuzz(&automaton, events, numEvents, &initialAutomaton, initialState, possibleEndings,
              40, 1'000'000, false, i);
 }
 
