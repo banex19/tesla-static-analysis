@@ -10,7 +10,7 @@ typedef struct TeslaEventFlags {
 } TeslaEventFlags;
 
 typedef struct TeslaEvent {
-    TeslaEvent* successors;
+    TeslaEvent** successors;
     TeslaEventFlags flags;
     size_t numSuccessors;
 
@@ -25,12 +25,13 @@ typedef struct TeslaAutomatonFlags {
 } TeslaAutomatonFlags;
 
 typedef struct TeslaAutomaton {
-    TeslaEvent* events;
+    TeslaEvent** events;
     TeslaAutomatonFlags flags;
     size_t numEvents;
 
     size_t currentTemporalTag;
     TeslaEvent* currentEvent;
+    TeslaEvent* lastEvent;
 
     const char* name;
 } TeslaAutomaton;

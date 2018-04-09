@@ -2,7 +2,7 @@
 # can't fire any of its assertions!
 #
 # This doesn't change any requirements on libraries the tests link against.
-set(CMAKE_BUILD_TYPE Debug)
+#set(CMAKE_BUILD_TYPE Debug)
 
 # Provide access to internal headers.
 include_directories(../src)
