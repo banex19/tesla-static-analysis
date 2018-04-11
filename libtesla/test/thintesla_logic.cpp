@@ -109,19 +109,33 @@ void Transition(TeslaAutomaton* automaton, TeslaEvent* event, int param)
 
 #define PRINT_VERIFICATION
 
-bool HandleOptionalBlock(TeslaAutomaton* automaton, size_t* eventNum, size_t* validTags, size_t* invalidZone, bool* wentInFuture)
+bool HandleORBlock(TeslaAutomaton* automaton, size_t& eventNum, size_t& validTags, size_t& invalidZone, bool& wentInFuture)
 {
-    size_t valid = *validTags;
-    size_t frontierMask = valid - 1;
-    for (size_t i = *eventNum; i < automaton->numEvents; ++i)
+    size_t maxValidTags = validTags;
+    size_t maxInvalidZone = invalidZone;
+    bool onceInFuture = false;
+
+    size_t uniqueZone = 0;
+    bool atLeastOne = false;
+
+    for (; eventNum < automaton->numEvents; ++eventNum)
     {
-        TeslaEvent* event = automaton->events[i];
+        TeslaEvent* event = automaton->events[eventNum];
         StoreMock* store = (StoreMock*)event->store;
 
-        if (!event->flags.isOptional)
+        if (!event->flags.isOR)
         {
-            *eventNum = i;
-            *validTags = valid;
+            if (!atLeastOne)
+            {
+                cout << "Here\n";
+                return false;
+            }
+
+            if (onceInFuture)
+                wentInFuture = true;
+
+            validTags = maxValidTags;
+            invalidZone = maxInvalidZone;
             return true;
         }
 
@@ -135,49 +149,70 @@ bool HandleOptionalBlock(TeslaAutomaton* automaton, size_t* eventNum, size_t* va
             else
             {
 #ifdef PRINT_VERIFICATION
-                std::bitset<64> bits{tag};
-                std::bitset<64> validO{valid};
-                cout << "\n";
-                cout << "Tag:\t" << bits << "\n";
-                cout << "Valid:\t" << validO << "\n";
-#endif
 
+                std::bitset<64> bits{tag};
+                std::bitset<64> valid{validTags};
+                cout << "OR BLOCK\n";
+                cout << "Tag:\t" << bits << "\n";
+                cout << "Valid:\t" << valid << "\n";
+#endif
                 bool happenedInPast = false;
 
-                if ((tag & valid) && (LastOne(tag) > LastOne(tag & valid)))
+                if ((tag & validTags) && (LastOne(tag) > LastOne(tag & validTags)))
                 {
                     return false;
                 }
-                else if ((tag & valid) == 0 && LastOne(valid) > LastOne(tag))
+                else if ((tag & validTags) == 0 && LastOne(validTags) > LastOne(tag))
                 {
                     happenedInPast = true;
                 }
 
-                if (*wentInFuture)
-                {
-                    size_t mustBeZero = *invalidZone & tag;
-                    if (mustBeZero != 0)
-                        return false;
-                }
-
                 if (!happenedInPast)
                 {
-                    if ((ONE << LastOne(tag)) > valid)
+                    if (wentInFuture)
                     {
-                        *wentInFuture = true;
-                        size_t frontierMask = valid - 1;
-                        size_t fullMask = (ONE << LastOne(tag)) - 1;
-
-                        *invalidZone |= (fullMask ^ frontierMask);
-                        std::bitset<64> invalid{*invalidZone};
-                        cout << "Inv:\t" << invalid << "\n";
-
-                        size_t mustBeZero = *invalidZone & tag;
+                        size_t mustBeZero = invalidZone & tag;
                         if (mustBeZero != 0)
+                        {
                             return false;
+                        }
+                        if (uniqueZone != 0)
+                        {
+                            if ((uniqueZone & tag) != 0 && !IsPowerOfTwo(uniqueZone & tag))
+                            {
+                                return false;
+                            }
+                        }
                     }
 
-                    valid = ONE << LastOne(tag);
+                    if ((ONE << LastOne(tag)) > validTags)
+                    {
+                        onceInFuture = true;
+                        size_t frontierMask = validTags - 1;
+                        size_t fullMask = (ONE << LastOne(tag)) - 1;
+
+                        size_t newInvalidZone = invalidZone | (fullMask ^ frontierMask);
+
+                        if (newInvalidZone > maxInvalidZone)
+                            maxInvalidZone = newInvalidZone;
+
+                        std::bitset<64> invalid{newInvalidZone};
+                        cout << "Inv:\t" << invalid << "\n";
+
+                        size_t mustBeZero = newInvalidZone & tag;
+                        if (mustBeZero != 0)
+                        {
+                            return false;
+                        }
+
+                        size_t uniqueMask = ONE << LastOne(tag);
+                        uniqueZone |= (uniqueMask ^ frontierMask);
+                    }
+
+                    if ((ONE << LastOne(tag)) > maxValidTags)
+                        maxValidTags = ONE << LastOne(tag);
+
+                    atLeastOne = true;
                 }
             }
         }
@@ -206,9 +241,9 @@ bool VerifyAssertion(TeslaAutomaton* automaton)
 
         if (!event->flags.isAssertion && !event->flags.isDeterministic)
         {
-            if (event->flags.isOptional)
+            if (event->flags.isOR)
             {
-                if (!HandleOptionalBlock(automaton, &i, &validTags, &invalidZone, &wentInFuture))
+                if (!HandleORBlock(automaton, i, validTags, invalidZone, wentInFuture))
                     return false;
 
                 assert(i > 0);
@@ -219,7 +254,10 @@ bool VerifyAssertion(TeslaAutomaton* automaton)
             size_t tag = store->Contains(event->paramValue);
             if (tag == 0)
             {
-                return false;
+                if (event->flags.isOptional)
+                    continue;
+                else
+                    return false;
             }
             else
             {
@@ -232,8 +270,7 @@ bool VerifyAssertion(TeslaAutomaton* automaton)
                 cout << "Valid:\t" << valid << "\n";
                 cout << "Last:\t" << last << "\n";
 #endif
-                // cout << "Last one tag: " << LastOne(tag) << "\n";
-                // cout << "Last one valid: " << LastOne(validTags) << "\n";
+                bool happenedInPast = false;
 
                 if (i != 0)
                 {
@@ -245,7 +282,10 @@ bool VerifyAssertion(TeslaAutomaton* automaton)
                     // Check that this event didn't happen in the past.
                     else if ((tag & validTags) == 0 && LastOne(validTags) > LastOne(tag))
                     {
-                        return false;
+                        if (event->flags.isOptional)
+                            happenedInPast = true;
+                        else
+                            return false;
                     }
 
                     if (wentInFuture)
@@ -255,7 +295,7 @@ bool VerifyAssertion(TeslaAutomaton* automaton)
                             return false;
                     }
 
-                    if ((ONE << LastOne(tag)) > validTags)
+                    if (!happenedInPast && (ONE << LastOne(tag)) > validTags)
                     {
                         wentInFuture = true;
                         size_t frontierMask = validTags - 1;
@@ -271,7 +311,10 @@ bool VerifyAssertion(TeslaAutomaton* automaton)
                     }
                 }
 
-                validTags = ONE << LastOne(tag);
+                if (!happenedInPast)
+                {
+                    validTags = ONE << LastOne(tag);
+                }
             }
         }
     }
@@ -438,7 +481,7 @@ typedef bool (*fntype)(int, TeslaAutomaton*, TeslaEvent*);
 fntype fns[10] = {a, b, c, d, e};
 
 void Fuzz(TeslaAutomaton* automaton, TeslaEvent* events, size_t numEvents, TeslaAutomaton* initialAutomaton, TeslaEvent* initialState,
-          std::vector<std::vector<size_t>> possibleStates,
+          std::vector<std::vector<size_t>>& possibleStates, bool onlyUsePossibleStates,
           size_t maxRandomEvents, size_t numTests, bool alwaysCorrect, size_t seed = 0)
 {
     std::random_device rd;
@@ -480,41 +523,70 @@ void Fuzz(TeslaAutomaton* automaton, TeslaEvent* events, size_t numEvents, Tesla
         {
             if (stack.size() >= numEvents - 1)
             {
-                size_t optionalsSkipped = 0;
-                for (size_t i = 0; i < numEvents - optionalsSkipped - 1; ++i)
+                if (!onlyUsePossibleStates)
                 {
-                    while (true)
+                    size_t skipped = 0;
+                    size_t orSkipped = 0;
+                    bool inOR = false;
+                    bool atLeastOneInOR = false;
+                    for (size_t i = 0; i < numEvents - skipped - 1; ++i)
                     {
-                        size_t numExpected = numEvents - (i + 2 + optionalsSkipped);
-
-                        if (stack[stack.size() - (i + 1)] != numExpected)
+                        while (true)
                         {
-                            if (events[numExpected].flags.isOptional)
-                                optionalsSkipped++;
+                            size_t numExpected = numEvents - (i + 2 + skipped);
+
+                            if (stack[stack.size() - (i + 1)] != numExpected)
+                            {
+                                if (events[numExpected].flags.isOptional)
+                                    skipped++;
+                                else if (events[numExpected].flags.isOR)
+                                {
+                                    inOR = true;
+                                    skipped++;
+                                }
+                                else
+                                {
+                                    numExpected = 0;
+                                }
+                            }
                             else
                             {
-                                numExpected = 0;
+                                if (events[numExpected].flags.isOR)
+                                {
+                                    inOR = true;
+                                    atLeastOneInOR = true;
+                                }
+                                else
+                                {
+                                    if (inOR && !atLeastOneInOR)
+                                    {
+                                        cout << "Should fail (OR)\n";
+                                        expectTrue = false;
+                                        break;
+                                    }
+
+                                    inOR = false;
+                                    atLeastOneInOR = false;
+                                }
+
+                                cout << "As expected event " << numExpected << "\n";
+                                break;
+                            }
+
+                            if (numExpected == 0)
+                            {
+                                cout << "Should fail\n";
+                                expectTrue = false;
+                                break;
                             }
                         }
-                        else
-                        {
-                            cout << "As expected event " << numExpected << "\n";
-                            break;
-                        }
 
-                        if (numExpected == 0)
-                        {
-                            cout << "Should fail\n";
-                            expectTrue = false;
+                        if (!expectTrue)
                             break;
-                        }
                     }
-
-                    if (!expectTrue)
-                        break;
                 }
 
-                if (expectTrue && possibleStates.size() > 0)
+                if (possibleStates.size() > 0)
                 {
                     bool confirmed = false;
                     for (auto& possible : possibleStates)
@@ -528,7 +600,14 @@ void Fuzz(TeslaAutomaton* automaton, TeslaEvent* events, size_t numEvents, Tesla
                             break;
                     }
 
-                    assert(confirmed);
+                    if (!onlyUsePossibleStates)
+                    {
+                        assert(expectTrue == confirmed);
+                    }
+                    else
+                    {
+                        expectTrue = confirmed;
+                    }
                 }
 
                 bool result = assertion(0, automaton, events + (numEvents - 1));
@@ -545,7 +624,7 @@ void Fuzz(TeslaAutomaton* automaton, TeslaEvent* events, size_t numEvents, Tesla
         }
     }
 
-    alwaysOut << "[Seed: " << seed << "] Checked assertions: " << numChecked << " (" << numPassed << " passed)\n";
+    alwaysOut << "[Seed: " << seed << ", max events: " << maxRandomEvents << "] Checked assertions: " << numChecked << " (" << numPassed << " passed)\n";
 }
 
 void FuzzTest()
@@ -601,17 +680,23 @@ void FuzzTest()
     TeslaAutomaton initialAutomaton;
     memcpy(&initialAutomaton, &automaton, sizeof(TeslaAutomaton));
 
-    // Optional events.
-    /* initialAutomaton.name = "optional";
+    std::vector<std::vector<size_t>> possibleEndings;
+
+    /* // Optional events.
+    initialAutomaton.name = "optional";
     successors[0].clear();
     successors[0].push_back(events + 1);
     successors[0].push_back(events + 2);
     initialState[1].flags.isOptional = true;
     initialState[0].numSuccessors = 2;
-    initialState[0].successors = successors[0].data(); 
+    initialState[0].successors = successors[0].data();
+
+    possibleEndings.clear();
+    possibleEndings.push_back({0, 1, 2, 3});
+    possibleEndings.push_back({0, 2, 3}); */
 
     // Multiple optional events.
-    initialAutomaton.name = "multiple optionals";
+    /*   initialAutomaton.name = "multiple optionals";
     initialState[1].flags.isOptional = true;
     initialState[2].flags.isOptional = true;
     successors[0].clear();
@@ -624,10 +709,16 @@ void FuzzTest()
     initialState[0].numSuccessors = 3;
     initialState[0].successors = successors[0].data();
     initialState[1].numSuccessors = 2;
-    initialState[1].successors = successors[1].data(); */
+    initialState[1].successors = successors[1].data();
+
+    possibleEndings.clear();
+    possibleEndings.push_back({0, 1, 2, 3});
+    possibleEndings.push_back({0, 3});
+    possibleEndings.push_back({0, 1, 3});
+    possibleEndings.push_back({0, 2, 3}); */
 
     // Disjoint optional events.
-    assert(numEvents >= 5);
+    /*assert(numEvents >= 5);
     initialAutomaton.name = "disjoint optionals";
     initialState[1].flags.isOptional = true;
     initialState[3].flags.isOptional = true;
@@ -642,15 +733,80 @@ void FuzzTest()
     initialState[2].numSuccessors = 2;
     initialState[2].successors = successors[2].data();
 
-    std::vector<std::vector<size_t>> possibleEndings;
+    possibleEndings.clear();
     possibleEndings.push_back({0, 1, 2, 3});
     possibleEndings.push_back({0, 2, 3});
     possibleEndings.push_back({0, 1, 2});
-    possibleEndings.push_back({0, 2});
+    possibleEndings.push_back({0, 2}); */
 
-    for (size_t i = 0; i < 10; ++i)
-        Fuzz(&automaton, events, numEvents, &initialAutomaton, initialState, possibleEndings,
-             40, 1'000'000, false, i);
+    // Two OR-ed events
+    /*   initialAutomaton.name = "two-events OR";
+    initialState[1].flags.isOR = true;
+    initialState[2].flags.isOR = true;
+    successors[0].clear();
+    successors[0].push_back(events + 1);
+    successors[0].push_back(events + 2);
+    successors[1].clear();
+    successors[1].push_back(events + 2);
+    successors[1].push_back(events + 3);
+    initialState[0].numSuccessors = 2;
+    initialState[0].successors = successors[0].data();
+    initialState[1].numSuccessors = 2;
+    initialState[1].successors = successors[1].data();
+
+    possibleEndings.clear();
+    possibleEndings.push_back({0, 1, 2, 3});
+    possibleEndings.push_back({0, 2, 3});
+    possibleEndings.push_back({0, 1, 3});
+    possibleEndings.push_back({0, 2, 1, 3}); */
+
+    // Three OR-ed events
+    assert(numEvents >= 5);
+    initialAutomaton.name = "three-events OR";
+    initialState[1].flags.isOR = true;
+    initialState[2].flags.isOR = true;
+    initialState[3].flags.isOR = true;
+    successors[0].clear();
+    successors[0].push_back(events + 1);
+    successors[0].push_back(events + 2);
+    successors[0].push_back(events + 3);
+    successors[1].clear();
+    successors[1].push_back(events + 2);
+    successors[1].push_back(events + 3);
+    successors[1].push_back(events + 4);
+    successors[2].clear();
+    successors[2].push_back(events + 3);
+    successors[2].push_back(events + 4);
+    initialState[0].numSuccessors = 3;
+    initialState[0].successors = successors[0].data();
+    initialState[1].numSuccessors = 3;
+    initialState[1].successors = successors[1].data();
+    initialState[2].numSuccessors = 2;
+    initialState[2].successors = successors[2].data();
+
+    possibleEndings.clear();
+    possibleEndings.push_back({0, 1, 2, 3});
+    possibleEndings.push_back({0, 1});
+    possibleEndings.push_back({0, 2});
+    possibleEndings.push_back({0, 3});
+    possibleEndings.push_back({0, 1, 3});
+    possibleEndings.push_back({0, 2, 3});
+    possibleEndings.push_back({0, 1, 2});
+    possibleEndings.push_back({0, 2, 1});
+    possibleEndings.push_back({0, 3, 1});
+    possibleEndings.push_back({0, 3, 2});
+    possibleEndings.push_back({0, 3, 1, 2});
+    possibleEndings.push_back({0, 3, 2, 1});
+    possibleEndings.push_back({0, 1, 3, 2});
+    possibleEndings.push_back({0, 2, 3, 1});
+    possibleEndings.push_back({0, 2, 1, 3});
+
+    for (size_t i = 0; i < 10; i += 2)
+    {
+        for (auto& numRandomEvents : {10, 20, 30, 40})
+            Fuzz(&automaton, events, numEvents, &initialAutomaton, initialState, possibleEndings, possibleEndings.size() > 0,
+                 numRandomEvents, 1'000'000, false, i);
+    }
 }
 
 void TestSpecific()
@@ -894,6 +1050,108 @@ void TestLogic()
 
     assert(assertion(0, &automaton, events + 3) == true);
     assert(automaton.currentEvent == events + 3);
+
+    // OR-ed events.
+    initialAutomaton.name = "a -> (b || c) -> NOW";
+    initialState[1].flags.isOR = true;
+    initialState[2].flags.isOR = true;
+    successors[0].clear();
+    successors[0].push_back(events + 1);
+    successors[0].push_back(events + 2);
+    successors[1].clear();
+    successors[1].push_back(events + 2);
+    successors[1].push_back(events + 3);
+    initialState[0].numSuccessors = 2;
+    initialState[0].successors = successors[0].data();
+    initialState[1].numSuccessors = 2;
+    initialState[1].successors = successors[1].data();
+
+    ResetAutomaton(&automaton, &initialAutomaton);
+    ResetEvents(events, initialState, numEvents);
+    a(0, &automaton, events + 0);
+    c(2, &automaton, events + 2);
+    b(1, &automaton, events + 1);
+
+    assert(assertion(0, &automaton, events + 3) == true);
+
+    ResetAutomaton(&automaton, &initialAutomaton);
+    ResetEvents(events, initialState, numEvents);
+
+    a(0, &automaton, events + 0);
+    b(1, &automaton, events + 1);
+    c(2, &automaton, events + 2);
+
+    assert(assertion(0, &automaton, events + 3) == true);
+
+    ResetAutomaton(&automaton, &initialAutomaton);
+    ResetEvents(events, initialState, numEvents);
+
+    a(0, &automaton, events + 0);
+
+    assert(assertion(0, &automaton, events + 3) == false);
+
+    ResetAutomaton(&automaton, &initialAutomaton);
+    ResetEvents(events, initialState, numEvents);
+
+    a(0, &automaton, events + 0);
+    b(1, &automaton, events + 1);
+
+    assert(assertion(0, &automaton, events + 3) == true);
+
+    ResetAutomaton(&automaton, &initialAutomaton);
+    ResetEvents(events, initialState, numEvents);
+
+    a(0, &automaton, events + 0);
+    c(2, &automaton, events + 2);
+
+    assert(assertion(0, &automaton, events + 3) == true);
+
+    ResetAutomaton(&automaton, &initialAutomaton);
+    ResetEvents(events, initialState, numEvents);
+
+    a(0, &automaton, events + 0);
+    b(1, &automaton, events + 1);
+    b(1, &automaton, events + 1);
+    c(2, &automaton, events + 2);
+
+    assert(assertion(0, &automaton, events + 3) == false);
+
+    ResetAutomaton(&automaton, &initialAutomaton);
+    ResetEvents(events, initialState, numEvents);
+
+    a(0, &automaton, events + 0);
+    b(1, &automaton, events + 1);
+    b(1, &automaton, events + 1);
+    a(0, &automaton, events + 0);
+    c(2, &automaton, events + 2);
+
+    assert(assertion(0, &automaton, events + 3) == true);
+
+    ResetAutomaton(&automaton, &initialAutomaton);
+    ResetEvents(events, initialState, numEvents);
+
+    a(0, &automaton, events + 0);
+    b(1, &automaton, events + 1);
+    b(1, &automaton, events + 1);
+    a(0, &automaton, events + 0);
+    c(2, &automaton, events + 2);
+    a(0, &automaton, events + 0);
+    b(1, &automaton, events + 1);
+    a(0, &automaton, events + 0);
+
+    b(1, &automaton, events + 1);
+    a(0, &automaton, events + 0);
+    c(2, &automaton, events + 2);
+    a(0, &automaton, events + 0);
+
+    assert(assertion(0, &automaton, events + 3) == false);
+
+    initialState[1].flags.isOR = false;
+    initialState[2].flags.isOR = false;
+    successors[1].clear();
+    successors[1].push_back(events + 2);
+    initialState[1].numSuccessors = 1;
+    initialState[1].successors = successors[1].data();
 
     // Optional events.
     initialAutomaton.name = "a -> optional(b) -> c -> NOW";
@@ -1193,6 +1451,8 @@ void TestLogic()
     a(0, &automaton, events + 0);
 
     assert(assertion(0, &automaton, events + 3) == true);
+
+    alwaysOut << "Simple assertions passed\n";
 }
 
 int main()

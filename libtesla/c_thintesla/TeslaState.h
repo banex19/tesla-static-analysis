@@ -7,6 +7,7 @@ typedef struct TeslaEventFlags {
     uint8_t isAssertion : 1;
     uint8_t isBeforeAssertion : 1;
     uint8_t isOptional : 1;
+    uint8_t isOR : 1;
 } TeslaEventFlags;
 
 typedef struct TeslaEvent {
