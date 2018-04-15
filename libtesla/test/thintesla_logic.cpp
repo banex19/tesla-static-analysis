@@ -1,4 +1,4 @@
-#include "TeslaState.h"
+
 #include "ThinTesla.h"
 
 #include <bitset>
@@ -14,6 +14,43 @@ void TestPassed(const std::string& name)
 {
     std::cout << "Test [" << name << "] passed\n";
 }
+
+/* Mock TeslaState */
+typedef struct TeslaEventFlags {
+    uint8_t isDeterministic : 1;
+    uint8_t isAssertion : 1;
+    uint8_t isBeforeAssertion : 1;
+    uint8_t isOptional : 1;
+    uint8_t isOR : 1;
+} TeslaEventFlags;
+
+typedef struct TeslaEvent {
+    TeslaEvent** successors;
+    TeslaEventFlags flags;
+    size_t numSuccessors;
+
+    void* store;
+    size_t id;
+    size_t paramValue;
+} TeslaEvent;
+
+
+typedef struct TeslaAutomatonFlags {
+    uint8_t isDeterministic : 1;
+} TeslaAutomatonFlags;
+
+typedef struct TeslaAutomaton {
+    TeslaEvent** events;
+    TeslaAutomatonFlags flags;
+    size_t numEvents;
+
+    size_t currentTemporalTag;
+    TeslaEvent* currentEvent;
+    TeslaEvent* lastEvent;
+
+    const char* name;
+} TeslaAutomaton;
+/* ********** */
 
 using std::cout;
 using namespace std::chrono_literals;
@@ -682,7 +719,11 @@ void FuzzTest()
 
     std::vector<std::vector<size_t>> possibleEndings;
 
-    /* // Optional events.
+    const size_t numSeeds = 2;
+    const size_t numTests = 200'000;
+    const std::vector<size_t> numMaxRandomEvents{10, 20, 30, 40};
+
+    // Optional events.
     initialAutomaton.name = "optional";
     successors[0].clear();
     successors[0].push_back(events + 1);
@@ -693,10 +734,17 @@ void FuzzTest()
 
     possibleEndings.clear();
     possibleEndings.push_back({0, 1, 2, 3});
-    possibleEndings.push_back({0, 2, 3}); */
+    possibleEndings.push_back({0, 2, 3});
+
+    for (size_t i = 0; i < numSeeds; i++)
+    {
+        for (auto& numRandomEvents : numMaxRandomEvents)
+            Fuzz(&automaton, events, numEvents, &initialAutomaton, initialState, possibleEndings, possibleEndings.size() > 0,
+                 numRandomEvents, numTests, false, i);
+    }
 
     // Multiple optional events.
-    /*   initialAutomaton.name = "multiple optionals";
+    initialAutomaton.name = "multiple optionals";
     initialState[1].flags.isOptional = true;
     initialState[2].flags.isOptional = true;
     successors[0].clear();
@@ -715,21 +763,33 @@ void FuzzTest()
     possibleEndings.push_back({0, 1, 2, 3});
     possibleEndings.push_back({0, 3});
     possibleEndings.push_back({0, 1, 3});
-    possibleEndings.push_back({0, 2, 3}); */
+    possibleEndings.push_back({0, 2, 3});
+
+    for (size_t i = 0; i < numSeeds; i++)
+    {
+        for (auto& numRandomEvents : numMaxRandomEvents)
+            Fuzz(&automaton, events, numEvents, &initialAutomaton, initialState, possibleEndings, possibleEndings.size() > 0,
+                 numRandomEvents, numTests, false, i);
+    }
 
     // Disjoint optional events.
-    /*assert(numEvents >= 5);
+    assert(numEvents >= 5);
     initialAutomaton.name = "disjoint optionals";
     initialState[1].flags.isOptional = true;
+    initialState[2].flags.isOptional = false;
     initialState[3].flags.isOptional = true;
     successors[0].clear();
     successors[0].push_back(events + 1);
     successors[0].push_back(events + 2);
+    successors[1].clear();
+    successors[1].push_back(events + 2);
     successors[2].clear();
     successors[2].push_back(events + 3);
     successors[2].push_back(events + 4);
     initialState[0].numSuccessors = 2;
     initialState[0].successors = successors[0].data();
+    initialState[1].numSuccessors = 1;
+    initialState[1].successors = successors[1].data();
     initialState[2].numSuccessors = 2;
     initialState[2].successors = successors[2].data();
 
@@ -737,10 +797,21 @@ void FuzzTest()
     possibleEndings.push_back({0, 1, 2, 3});
     possibleEndings.push_back({0, 2, 3});
     possibleEndings.push_back({0, 1, 2});
-    possibleEndings.push_back({0, 2}); */
+    possibleEndings.push_back({0, 2});
+
+    for (size_t i = 0; i < numSeeds; i++)
+    {
+        for (auto& numRandomEvents : numMaxRandomEvents)
+            Fuzz(&automaton, events, numEvents, &initialAutomaton, initialState, possibleEndings, possibleEndings.size() > 0,
+                 numRandomEvents, numTests, false, i);
+    }
 
     // Two OR-ed events
-    /*   initialAutomaton.name = "two-events OR";
+    initialState[1].flags.isOptional = false;
+    initialState[2].flags.isOptional = false;
+    initialState[3].flags.isOptional = false;
+
+    initialAutomaton.name = "two-events OR";
     initialState[1].flags.isOR = true;
     initialState[2].flags.isOR = true;
     successors[0].clear();
@@ -749,16 +820,27 @@ void FuzzTest()
     successors[1].clear();
     successors[1].push_back(events + 2);
     successors[1].push_back(events + 3);
+    successors[2].clear();
+    successors[2].push_back(events + 3);
     initialState[0].numSuccessors = 2;
     initialState[0].successors = successors[0].data();
     initialState[1].numSuccessors = 2;
     initialState[1].successors = successors[1].data();
+    initialState[2].numSuccessors = 1;
+    initialState[2].successors = successors[2].data();
 
     possibleEndings.clear();
     possibleEndings.push_back({0, 1, 2, 3});
     possibleEndings.push_back({0, 2, 3});
     possibleEndings.push_back({0, 1, 3});
-    possibleEndings.push_back({0, 2, 1, 3}); */
+    possibleEndings.push_back({0, 2, 1, 3});
+
+    for (size_t i = 0; i < numSeeds; i++)
+    {
+        for (auto& numRandomEvents : numMaxRandomEvents)
+            Fuzz(&automaton, events, numEvents, &initialAutomaton, initialState, possibleEndings, possibleEndings.size() > 0,
+                 numRandomEvents, numTests, false, i);
+    }
 
     // Three OR-ed events
     assert(numEvents >= 5);
@@ -801,11 +883,52 @@ void FuzzTest()
     possibleEndings.push_back({0, 2, 3, 1});
     possibleEndings.push_back({0, 2, 1, 3});
 
-    for (size_t i = 0; i < 10; i += 2)
+    for (size_t i = 0; i < numSeeds; i++)
     {
-        for (auto& numRandomEvents : {10, 20, 30, 40})
+        for (auto& numRandomEvents : numMaxRandomEvents)
             Fuzz(&automaton, events, numEvents, &initialAutomaton, initialState, possibleEndings, possibleEndings.size() > 0,
-                 numRandomEvents, 1'000'000, false, i);
+                 numRandomEvents, numTests, false, i);
+    }
+
+    // Two OR-ed events and one optional
+    assert(numEvents >= 5);
+    initialAutomaton.name = "two-events OR and one optional";
+    initialState[1].flags.isOR = true;
+    initialState[2].flags.isOR = true;
+    initialState[3].flags.isOR = false;
+    initialState[3].flags.isOptional = true;
+    successors[0].clear();
+    successors[0].push_back(events + 1);
+    successors[0].push_back(events + 2);
+    successors[1].clear();
+    successors[1].push_back(events + 2);
+    successors[1].push_back(events + 3);
+    successors[2].push_back(events + 4);
+    successors[2].clear();
+    successors[2].push_back(events + 3);
+    successors[2].push_back(events + 4);
+    initialState[0].numSuccessors = 2;
+    initialState[0].successors = successors[0].data();
+    initialState[1].numSuccessors = 3;
+    initialState[1].successors = successors[1].data();
+    initialState[2].numSuccessors = 2;
+    initialState[2].successors = successors[2].data();
+
+    possibleEndings.clear();
+    possibleEndings.push_back({0, 1});
+    possibleEndings.push_back({0, 2});
+    possibleEndings.push_back({0, 1, 3});
+    possibleEndings.push_back({0, 2, 3});
+    possibleEndings.push_back({0, 1, 2});
+    possibleEndings.push_back({0, 2, 1});
+    possibleEndings.push_back({0, 1, 2, 3});
+    possibleEndings.push_back({0, 2, 1, 3});
+
+    for (size_t i = 0; i < numSeeds; i++)
+    {
+        for (auto& numRandomEvents : numMaxRandomEvents)
+            Fuzz(&automaton, events, numEvents, &initialAutomaton, initialState, possibleEndings, possibleEndings.size() > 0,
+                 numRandomEvents, numTests, false, i);
     }
 }
 

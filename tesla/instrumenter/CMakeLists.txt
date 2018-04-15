@@ -14,7 +14,8 @@ add_llvm_loadable_module(LLVMTesla
   Instrumentation.cpp
   Remove.cpp
   TranslationFn.cpp
-
+  
+  ThinTeslaTypes.cpp
   StaticPass.cpp
   ManifestPass.cpp
   CheckResult.cpp

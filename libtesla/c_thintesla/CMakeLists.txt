@@ -9,6 +9,13 @@ add_library(cthintesla SHARED
     TeslaUtils.c
     TeslaVector.c
     TeslaMalloc.c
+    TeslaHashTable.c
+    TeslaLogic.c
+    TeslaState.c
+    TeslaStore.c
+    TeslaHash.c
+    TeslaAssert.c
+    MurmurHash3.c
 )
 
 target_link_libraries(cthintesla ${CMAKE_THREAD_LIBS_INIT})
