@@ -1,4 +1,7 @@
+#pragma once
+
 #include "../../libtesla/c_thintesla/TeslaState.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
@@ -12,7 +15,17 @@ class TeslaTypes
   public:
     static void Populate(Module& M);
 
-    static StructType* GetStructType(StringRef name, ArrayRef<Type*> fields, Module& M);
+    static ConstantInt* GetInt(LLVMContext& C, size_t numBits, size_t val)
+    {
+        IntegerType* type = IntegerType::get(C, numBits);
+        return ConstantInt::get(type, val);
+    }
+    static ConstantInt* GetSizeT(LLVMContext& C, size_t val)
+    {
+        return GetInt(C, sizeof(size_t) * 8, val);
+    }
+
+    static StructType* GetStructType(StringRef name, ArrayRef<Type*> fields, Module& M, bool packed = true);
 
     static StructType* AutomatonFlagsTy;
     static StructType* AutomatonStateTy;

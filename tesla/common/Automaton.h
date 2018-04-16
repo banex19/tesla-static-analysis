@@ -39,8 +39,8 @@
 
 #include <map>
 
-
-namespace tesla {
+namespace tesla
+{
 
 // TESLA IR classes
 class AutomatonDescription;
@@ -55,12 +55,13 @@ class Sequence;
 // Automata classes
 class State;
 
-namespace internal {
-  class DFABuilder;
-  class NFAParser;
-}
+namespace internal
+{
+class DFABuilder;
+class NFAParser;
+} // namespace internal
 
-typedef std::map<Identifier,const AutomatonDescription*> AutomataMap;
+typedef std::map<Identifier, const AutomatonDescription*> AutomataMap;
 
 /**
  * An automata representation of a TESLA assertion.
@@ -71,88 +72,90 @@ typedef std::map<Identifier,const AutomatonDescription*> AutomataMap;
  * An @ref Automaton owns its consituent @ref State objects; @ref Transition
  * ownership rests with the @ref State objects.
  */
-class Automaton {
-  friend class internal::DFABuilder;
-public:
-  //! Automata representations, in increasing order of realisability.
-  enum Type {
-    /**
+class Automaton
+{
+    friend class internal::DFABuilder;
+
+  public:
+    //! Automata representations, in increasing order of realisability.
+    enum Type
+    {
+        /**
      * An NFA representation that includes sub-automata pseudo-transitions, e.g.
      * "transition from state 2 to state 8 via sub-automaton 'active_close'".
      */
-    Unlinked,
+        Unlinked,
 
-    //! An NFA with realisable transitions.
-    Linked,
+        //! An NFA with realisable transitions.
+        Linked,
 
-    //! A DFA that can actually be implemented as instrumentation.
-    Deterministic,
-  };
+        //! A DFA that can actually be implemented as instrumentation.
+        Deterministic,
+    };
 
-  typedef llvm::SmallVector<State*,10> StateVector;
+    typedef llvm::SmallVector<State*, 10> StateVector;
 
+    virtual ~Automaton() {}
+    virtual bool IsRealisable() const;
 
-  virtual ~Automaton() {}
-  virtual bool IsRealisable() const;
+    size_t ID() const { return id; }
+    const AutomatonDescription& getAssertion() const { return assertion; }
+    const Usage* Use() const { return use; }
+    size_t StateCount() const { return States.size(); }
+    size_t TransitionCount() const { return Transitions.size(); }
 
-  size_t ID() const { return id; }
-  const AutomatonDescription& getAssertion() const { return assertion; }
-  const Usage* Use() const { return use; }
-  size_t StateCount() const { return States.size(); }
-  size_t TransitionCount() const { return Transitions.size(); }
+    std::string Name() const { return name; } //!< Short, unique name.
+    std::string String() const;               //!< Human-readable representation.
+    std::string Dot() const;                  //!< GraphViz representation.
 
-  std::string Name() const { return name; } //!< Short, unique name.
-  std::string String() const;               //!< Human-readable representation.
-  std::string Dot() const;                  //!< GraphViz representation.
+    //! Automaton specificiation from original source code.
+    std::string SourceCode() const { return assertion.source(); }
 
-  //! Automaton specificiation from original source code.
-  std::string SourceCode() const { return assertion.source(); }
+    //! Iterate over state transitions.
+    TransitionSets::const_iterator begin() const { return Transitions.begin(); }
+    TransitionSets::const_iterator end() const { return Transitions.end(); }
 
-  //! Iterate over state transitions.
-  TransitionSets::const_iterator begin() const { return Transitions.begin(); }
-  TransitionSets::const_iterator end() const  { return Transitions.end(); }
+    const Transition* Init() const;
+    const TEquivalenceClass Cleanup() const;
 
-  const Transition* Init() const;
-  const TEquivalenceClass Cleanup() const;
-
-  /**
+    /**
    * A representation of this automaton's lifetime, suitable for storing
    * in e.g., an unordered_set for deduplicating.
    */
-  class Lifetime {
-  public:
-    AutomatonDescription::Context Context;
-    const Transition* Init;
-    const Transition* Cleanup;
-
-    Lifetime(AutomatonDescription::Context Context,
-             const Transition* Init,
-             const Transition* Cleanup)
-      : Context(Context), Init(Init), Cleanup(Cleanup)
+    class Lifetime
     {
-    }
+      public:
+        AutomatonDescription::Context Context;
+        const Transition* Init;
+        const Transition* Cleanup;
 
-    std::string String() const;
-    bool operator == (const Lifetime& other) const;
-  };
+        Lifetime(AutomatonDescription::Context Context,
+                 const Transition* Init,
+                 const Transition* Cleanup)
+            : Context(Context), Init(Init), Cleanup(Cleanup)
+        {
+        }
 
-  Lifetime getLifetime() const;
+        std::string String() const;
+        bool operator==(const Lifetime& other) const;
+    };
 
-protected:
-  Automaton(size_t id, const AutomatonDescription&,
-            const Usage*, llvm::StringRef Name,
-            llvm::ArrayRef<State*>, const TransitionSets&);
+    Lifetime getLifetime() const;
 
-  const size_t id;
-  const AutomatonDescription& assertion;  //!< Automaton states.
-  const Usage *use;                       //!< How the automaton is used.
-  const std::string name;
+    const AutomatonDescription& assertion; //!< Automaton states.
 
-  StateVector States;
-  TransitionSets Transitions;
+  protected:
+    Automaton(size_t id, const AutomatonDescription&,
+              const Usage*, llvm::StringRef Name,
+              llvm::ArrayRef<State*>, const TransitionSets&);
+
+    const size_t id;
+    const Usage* use; //!< How the automaton is used.
+    const std::string name;
+
+    StateVector States;
+    TransitionSets Transitions;
 };
-
-
 
 /**
  * A non-deterministic automaton that represents a TESLA assertion.
@@ -166,48 +169,48 @@ protected:
  * Objects of this type might accidentally be realisable (that is, DFAs), but
  * the type system makes no guarantees.
  */
-class NFA : public Automaton {
-  friend class DFA;
+class NFA : public Automaton
+{
+    friend class DFA;
 
-public:
-  static NFA* Parse(const AutomatonDescription*, const Usage*, unsigned int id);
+  public:
+    static NFA* Parse(const AutomatonDescription*, const Usage*, unsigned int id);
 
-  /**
+    /**
    * Construct a version of this @ref Automaton with all sub-automata
    * transitions replaced by real NFA elements (states and transitions).
    *
    * @param  Desc        where to find definitions of sub-automata
    */
-  NFA* Link(const AutomataMap& Desc);
+    NFA* Link(const AutomataMap& Desc);
 
-private:
-  NFA(size_t id, const AutomatonDescription& A,
-      const Usage*, llvm::StringRef Name,
-      llvm::ArrayRef<State*>, const TransitionSets&);
+  private:
+    NFA(size_t id, const AutomatonDescription& A,
+        const Usage*, llvm::StringRef Name,
+        llvm::ArrayRef<State*>, const TransitionSets&);
 
-  friend class internal::NFAParser;
+    friend class internal::NFAParser;
 };
-
 
 /**
  * A DFA description of a TESLA assertion.
  *
  * Objects of this type are guaranteed to be realisable.
  */
-class DFA : public Automaton {
-  friend class internal::DFABuilder;
+class DFA : public Automaton
+{
+    friend class internal::DFABuilder;
 
-public:
-  static DFA* Convert(const NFA*);
-  bool IsRealisable() const { return true; }
+  public:
+    static DFA* Convert(const NFA*);
+    bool IsRealisable() const { return true; }
 
-private:
-  DFA(size_t id, AutomatonDescription& A,
-      const Usage*, llvm::StringRef Name,
-      llvm::ArrayRef<State*>, const TransitionSets&);
+  private:
+    DFA(size_t id, AutomatonDescription& A,
+        const Usage*, llvm::StringRef Name,
+        llvm::ArrayRef<State*>, const TransitionSets&);
 };
 
 } // namespace tesla
 
-#endif   // AUTOMATON_H
-
+#endif // AUTOMATON_H

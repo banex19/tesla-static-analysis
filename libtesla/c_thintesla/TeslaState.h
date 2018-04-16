@@ -3,7 +3,11 @@
 #include "TeslaStore.h"
 #include "ThinTesla.h"
 
+//#define TESLA_PACK_STRUCTS
+#ifdef TESLA_PACK_STRUCTS
 #pragma pack(1)
+#else
+#endif
 
 typedef struct TeslaEventFlags
 {
@@ -56,4 +60,6 @@ typedef struct TeslaAutomaton
 
 void TA_Reset(TeslaAutomaton* automaton);
 
+#ifdef TESLA_PACK_STRUCTS
 #pragma options align = reset
+#endif

@@ -5,6 +5,7 @@
 #include "FieldReference.h"
 #include "Manifest.h"
 #include "Remove.h"
+#include "ThinTeslaInstrumenter.h"
 #include "ThinTeslaTypes.h"
 
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
@@ -23,6 +24,10 @@ static cl::opt<bool>
     SuppressDI("suppress-debug-instrumentation",
                cl::desc("Suppress the generation of debug output in instrumentation"));
 
+static cl::opt<bool>
+    UseThinTesla("thin-tesla",
+                 cl::desc("Use ThinTESLA"), cl::init(false));
+
 struct InstrumentPass : public ModulePass
 {
     static char ID;
@@ -39,24 +44,34 @@ bool InstrumentPass::runOnModule(Module& M)
         tesla::panic("unable to load TESLA manifest");
     }
 
-    TeslaTypes::Populate(M);
-
     legacy::PassManager Passes;
 
     // Add an appropriate TargetLibraryInfo pass for the module's triple.
     auto TLI = new TargetLibraryInfoWrapperPass(Triple(M.getTargetTriple()));
     Passes.add(TLI);
 
-    if (Manifest->HasInstrumentation())
+    if (UseThinTesla)
     {
-        Passes.add(new tesla::AssertionSiteInstrumenter(*Manifest, SuppressDI));
-        Passes.add(new tesla::FnCalleeInstrumenter(*Manifest, SuppressDI));
-        Passes.add(new tesla::FnCallerInstrumenter(*Manifest, SuppressDI));
-        Passes.add(new tesla::FieldReferenceInstrumenter(*Manifest, SuppressDI));
+        if (Manifest->HasInstrumentation())
+        {
+            TeslaTypes::Populate(M);
+            Passes.add(new ThinTeslaInstrumenter{*Manifest});
+            Passes.add(new tesla::RemoveInstrumenter(*Manifest, SuppressDI));
+        }
     }
     else
     {
-        Passes.add(new tesla::RemoveInstrumenter(*Manifest, SuppressDI));
+        if (Manifest->HasInstrumentation())
+        {
+            Passes.add(new tesla::AssertionSiteInstrumenter(*Manifest, SuppressDI));
+            Passes.add(new tesla::FnCalleeInstrumenter(*Manifest, SuppressDI));
+            Passes.add(new tesla::FnCallerInstrumenter(*Manifest, SuppressDI));
+            Passes.add(new tesla::FieldReferenceInstrumenter(*Manifest, SuppressDI));
+        }
+        else
+        {
+            Passes.add(new tesla::RemoveInstrumenter(*Manifest, SuppressDI));
+        }
     }
 
     Passes.run(M);

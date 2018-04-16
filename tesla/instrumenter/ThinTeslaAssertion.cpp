@@ -1,0 +1,192 @@
+#include "ThinTeslaAssertion.h"
+
+using namespace tesla;
+
+std::vector<ThinTeslaEventPtr> GetORBlock(std::vector<ThinTeslaEventPtr>& events, size_t start)
+{
+    std::vector<ThinTeslaEventPtr> block;
+
+    for (size_t i = start; i < events.size(); ++i)
+    {
+        if (events[i]->isOR)
+        {
+            block.push_back(events[i]);
+        }
+        else
+            break;
+    }
+
+    return block;
+}
+
+void ThinTeslaAssertion::BuildAssertion()
+{
+    ConvertExp(automaton->beginning());
+    ConvertExp(desc->expression());
+    ConvertExp(automaton->end());
+}
+
+void ThinTeslaAssertion::LinkEvents()
+{
+    for (size_t i = 0; i < events.size() - 1; ++i)
+    {
+        auto event = events[i];
+        auto next = events[i + 1];
+
+        if (next->isOR)
+        {
+            auto block = GetORBlock(events, i + 1);
+
+            for (auto& orEvent : block)
+            {
+                event->successors.push_back(orEvent);
+            }
+
+            assert(i + 1 + block.size() < events.size());
+            auto firstNonOR = events[i + 1 + block.size()];
+            block.push_back(firstNonOR);
+
+            for (size_t k = 0; k < block.size(); ++k)
+            {
+                for (size_t n = k + 1; n < block.size(); ++n)
+                {
+                    block[k]->successors.push_back(block[n]);
+                }
+            }
+
+            i = i + block.size() - 1;
+            continue;
+        }
+        else
+        {
+            event->successors.push_back(next);
+        }
+    }
+}
+
+void ThinTeslaAssertion::ConvertExp(const Expression& exp)
+{
+    if (exp.type() == tesla::Expression_Type_SEQUENCE)
+    {
+        for (const auto& subExp : exp.sequence().expression())
+        {
+            ConvertExp(subExp);
+        }
+    }
+    else if (exp.type() == tesla::Expression_Type_BOOLEAN_EXPR)
+    {
+        ConvertBoolean(exp.booleanexpr());
+    }
+    else if (exp.type() == tesla::Expression_Type_FUNCTION)
+    {
+        ConvertFunction(exp);
+    }
+    else if (exp.type() == tesla::Expression_Type_ASSERTION_SITE)
+    {
+        ConvertAssertionSite(exp);
+    }
+}
+
+void ThinTeslaAssertion::ConvertBoolean(const BooleanExpr& exp)
+{
+    if (exp.operation() == tesla::BooleanExpr_Operation_BE_Or)
+    {
+        assert(!isOR);
+
+        isOR = true;
+
+        for (const auto& subExp : exp.expression())
+        {
+            ConvertExp(subExp);
+        }
+
+        isOR = false;
+    }
+}
+
+void ThinTeslaAssertion::ConvertAssertionSite(const Expression& site)
+{
+    const auto& location = site.assertsite().location();
+
+    std::shared_ptr<ThinTeslaAssertionSite> event =
+        std::make_shared<ThinTeslaAssertionSite>(location.filename(), (size_t)location.line(), (size_t)location.counter());
+
+    AddEvent(event);
+    assertionFilename = location.filename();
+    assertionLine = location.line();
+    assertionCounter = location.counter();
+}
+
+void ThinTeslaAssertion::ConvertFunction(const Expression& fun)
+{
+    const FunctionEvent& function = fun.function();
+
+    bool hasParameterizedArgs = false;
+    for (const auto& arg : function.argument())
+    {
+        if (arg.type() != Argument_Type_Any)
+        {
+            hasParameterizedArgs = true;
+            break;
+        }
+    }
+
+    if (hasParameterizedArgs || function.has_expectedreturnvalue())
+    {
+        std::shared_ptr<ThinTeslaParametricFunction> event =
+            std::make_shared<ThinTeslaParametricFunction>(function.function().name(), function.context() == FunctionEvent_CallContext_Callee);
+
+        for (const auto& arg : function.argument())
+        {
+            AddArgumentToParametricEvent(event, arg);
+        }
+
+        if (function.has_expectedreturnvalue())
+        {
+            AddArgumentToParametricEvent(event, function.expectedreturnvalue(), true);
+        }
+
+        AddEvent(event);
+    }
+    else
+    {
+        std::shared_ptr<ThinTeslaFunction> event =
+            std::make_shared<ThinTeslaFunction>(function.function().name(), function.context() == FunctionEvent_CallContext_Callee);
+
+        AddEvent(event);
+    }
+
+    affectedFunctions.insert(function.function().name());
+}
+
+void ThinTeslaAssertion::AddArgumentToParametricEvent(std::shared_ptr<ThinTeslaParametricFunction> event, const tesla::Argument& arg, bool returnValue)
+{
+    if (arg.type() == Argument_Type_Any)
+        return;
+
+    if (arg.type() != Argument_Type_Constant && arg.type() != Argument_Type_Variable)
+    {
+        llvm::errs() << "Argument type: " << arg.type() << "\n";
+        assert(false && "Argument type not supported");
+    }
+
+    ThinTeslaParameter param;
+
+    if (arg.type() == Argument_Type_Constant)
+    {
+        param = ThinTeslaParameter(arg.value());
+    }
+    else
+    {
+        param = ThinTeslaParameter(arg.name());
+    }
+
+    if (!returnValue)
+    {
+        event->AddParameter(param);
+    }
+    else
+    {
+        event->AddReturnValue(param);
+    }
+}
