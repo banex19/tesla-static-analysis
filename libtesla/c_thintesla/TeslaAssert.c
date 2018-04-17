@@ -3,7 +3,7 @@
 void TeslaAssertionFail(TeslaAutomaton* automaton)
 {
 #ifndef _KERNEL
-    printf("TESLA ASSERTION FAILED - Automaton %s", automaton->name);
+    fprintf(stderr, "TESLA ASSERTION FAILED - Automaton %s\n", automaton->name);
 #endif
 
     TeslaPanic();
@@ -12,6 +12,8 @@ void TeslaAssertionFail(TeslaAutomaton* automaton)
 void TeslaPanic()
 {
 #ifndef _KERNEL
+    fflush(stderr);
+
     assert(false && "TESLA panic");
 #endif
 }

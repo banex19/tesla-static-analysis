@@ -155,6 +155,7 @@ message Sequence {
  */
 message AssertionSite {
   required Location location = 1;
+  optional FunctionRef function = 2;
 }
 
 /** A function has been called or has returned. */

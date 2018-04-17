@@ -5,6 +5,7 @@
 
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
+#include "ThinTeslaAssertion.h"
 
 #include <iostream>
 
@@ -24,6 +25,10 @@ class TeslaTypes
     {
         return GetInt(C, sizeof(size_t) * 8, val);
     }
+
+    static Function* GetUpdateAutomatonDeterministic(Module& M);
+    static Function* GetStartAutomaton(Module& M);
+    static Function* GetEndAutomaton(Module& M);
 
     static StructType* GetStructType(StringRef name, ArrayRef<Type*> fields, Module& M, bool packed = true);
 

@@ -1422,15 +1422,27 @@ class AssertionSite : public ::google::protobuf::Message /* @@protoc_insertion_p
   ::tesla::Location* release_location();
   void set_allocated_location(::tesla::Location* location);
 
+  // optional .tesla.FunctionRef function = 2;
+  bool has_function() const;
+  void clear_function();
+  static const int kFunctionFieldNumber = 2;
+  const ::tesla::FunctionRef& function() const;
+  ::tesla::FunctionRef* mutable_function();
+  ::tesla::FunctionRef* release_function();
+  void set_allocated_function(::tesla::FunctionRef* function);
+
   // @@protoc_insertion_point(class_scope:tesla.AssertionSite)
  private:
   inline void set_has_location();
   inline void clear_has_location();
+  inline void set_has_function();
+  inline void clear_has_function();
 
   ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
   ::google::protobuf::uint32 _has_bits_[1];
   mutable int _cached_size_;
   ::tesla::Location* location_;
+  ::tesla::FunctionRef* function_;
   friend void  protobuf_AddDesc_tesla_2eproto();
   friend void protobuf_AssignDesc_tesla_2eproto();
   friend void protobuf_ShutdownFile_tesla_2eproto();
@@ -3459,6 +3471,50 @@ inline void AssertionSite::set_allocated_location(::tesla::Location* location) {
     clear_has_location();
   }
   // @@protoc_insertion_point(field_set_allocated:tesla.AssertionSite.location)
+}
+
+// optional .tesla.FunctionRef function = 2;
+inline bool AssertionSite::has_function() const {
+  return (_has_bits_[0] & 0x00000002u) != 0;
+}
+inline void AssertionSite::set_has_function() {
+  _has_bits_[0] |= 0x00000002u;
+}
+inline void AssertionSite::clear_has_function() {
+  _has_bits_[0] &= ~0x00000002u;
+}
+inline void AssertionSite::clear_function() {
+  if (function_ != NULL) function_->::tesla::FunctionRef::Clear();
+  clear_has_function();
+}
+inline const ::tesla::FunctionRef& AssertionSite::function() const {
+  // @@protoc_insertion_point(field_get:tesla.AssertionSite.function)
+  return function_ != NULL ? *function_ : *default_instance_->function_;
+}
+inline ::tesla::FunctionRef* AssertionSite::mutable_function() {
+  set_has_function();
+  if (function_ == NULL) {
+    function_ = new ::tesla::FunctionRef;
+  }
+  // @@protoc_insertion_point(field_mutable:tesla.AssertionSite.function)
+  return function_;
+}
+inline ::tesla::FunctionRef* AssertionSite::release_function() {
+  // @@protoc_insertion_point(field_release:tesla.AssertionSite.function)
+  clear_has_function();
+  ::tesla::FunctionRef* temp = function_;
+  function_ = NULL;
+  return temp;
+}
+inline void AssertionSite::set_allocated_function(::tesla::FunctionRef* function) {
+  delete function_;
+  function_ = function;
+  if (function) {
+    set_has_function();
+  } else {
+    clear_has_function();
+  }
+  // @@protoc_insertion_point(field_set_allocated:tesla.AssertionSite.function)
 }
 
 // -------------------------------------------------------------------

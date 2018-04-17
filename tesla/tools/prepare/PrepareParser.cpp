@@ -41,9 +41,8 @@
 
 #include <llvm/ADT/StringSwitch.h>
 
-
 #include <algorithm>
-
+#include <iostream>
 #include <tesla.pb.h>
 
 using namespace clang;
@@ -75,6 +74,7 @@ Parser* Parser::AssertionParser(CallExpr* Call, ASTContext& Ctx)
     Expr* Expression = Call->getArg(i++);
 
     Identifier ID;
+
     std::string ProgrammerSpecifiedName(Bootstrap->ParseStringLiteral(Name));
     if (ProgrammerSpecifiedName.length() > 0)
         *ID.mutable_name() = ProgrammerSpecifiedName;
@@ -470,6 +470,27 @@ bool Parser::Parse(Expression* E, const CallExpr* Call, Flags F)
     return (this->*Parse)(E, Call, F);
 }
 
+const FunctionDecl* GetEnclosingFunctionDecl(const DeclRefExpr* exp, ASTContext& Ctx)
+{
+    const Stmt* current = exp;
+    while (current != nullptr)
+    {
+        const auto& parents = Ctx.getParents(*current);
+        if (parents.size() > 0)
+        {
+            const auto& parent = parents[0];
+            const FunctionDecl* st = parent.get<FunctionDecl>();
+            if (st != nullptr)
+                return st;
+
+            current = parent.get<Stmt>();
+        }
+        else
+            return nullptr;
+    }
+    return nullptr;
+}
+
 bool Parser::Parse(Expression* E, const DeclRefExpr* Ref, Flags F)
 {
     auto D = Ref->getDecl();
@@ -477,6 +498,10 @@ bool Parser::Parse(Expression* E, const DeclRefExpr* Ref, Flags F)
 
     if (D->getName() == ASSERTION_SITE)
     {
+        const FunctionDecl* decl = GetEnclosingFunctionDecl(Ref, Ctx);
+        assert(decl != nullptr);
+        *E->mutable_assertsite()->mutable_function()->mutable_name() = decl->getNameAsString();
+
         E->set_type(Expression::ASSERTION_SITE);
         *E->mutable_assertsite()->mutable_location() = ID.location();
         return true;

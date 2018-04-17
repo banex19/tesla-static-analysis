@@ -46,6 +46,7 @@ typedef struct TeslaAutomatonState
     TeslaEvent* currentEvent;
     TeslaEvent* lastEvent;
     bool isCorrect;
+    bool isActive;
 } TeslaAutomatonState;
 
 typedef struct TeslaAutomaton

@@ -35,7 +35,8 @@ class ThinTeslaEventVisitor
 #define VISITOR_ACCEPT                                                                                  \
     virtual void Accept(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaEventVisitor& visitor) \
     {                                                                                                   \
-        visitor.InstrumentEvent(M, assertion, *this);                                                   \
+        if (true || !IsInstrumented())                                                                  \
+            visitor.InstrumentEvent(M, assertion, *this);                                               \
     }
 
 class ThinTeslaEvent
@@ -49,9 +50,17 @@ class ThinTeslaEvent
     bool isOR = false;
     bool isDeterministic = true;
 
-    size_t id = 0;
+    bool IsInstrumented() { return alreadyInstrumented; }
+    void SetInstrumented() { alreadyInstrumented = true; }
 
+    bool IsEnd() { return successors.size() == 0; }
+    bool IsStart() { return id == 0; }
+
+    size_t id = 0;
     std::vector<std::shared_ptr<ThinTeslaEvent>> successors;
+
+  private:
+    bool alreadyInstrumented = false;
 };
 
 using ThinTeslaEventPtr = std::shared_ptr<ThinTeslaEvent>;
@@ -72,11 +81,11 @@ class ThinTeslaFunction : public ThinTeslaEvent
     bool calleeInstrumentation;
 };
 
-class ThinTeslaAssertionSite : public ThinTeslaEvent
+class ThinTeslaAssertionSite : public ThinTeslaFunction
 {
   public:
-    ThinTeslaAssertionSite(const std::string& filename, size_t lineNumber, size_t counter)
-        : filename(filename), line(lineNumber), counter(counter)
+    ThinTeslaAssertionSite(const std::string& functionName, const std::string& filename, size_t lineNumber, size_t counter)
+        : ThinTeslaFunction(functionName, false), filename(filename), line(lineNumber), counter(counter)
     {
     }
 
@@ -156,6 +165,7 @@ class ThinTeslaAssertion
     std::set<std::string> affectedFunctions;
 
     bool isDeterministic = true;
+
   private:
     void BuildAssertion();
 
@@ -186,7 +196,7 @@ class ThinTeslaAssertion
 
     void ConvertExp(const tesla::Expression& exp);
     void ConvertBoolean(const tesla::BooleanExpr& exp);
-    void ConvertAssertionSite(const tesla::Expression& site);
+    void ConvertAssertionSite(const tesla::AssertionSite& site);
     void ConvertFunction(const tesla::Expression& fun);
 
     void AddArgumentToParametricEvent(std::shared_ptr<ThinTeslaParametricFunction> event, const tesla::Argument& arg, bool returnValue = false);

@@ -16,11 +16,13 @@
 void StartAutomaton(TeslaAutomaton* automaton)
 {
     assert(automaton != NULL);
+    assert(!automaton->state.isActive);
     assert(automaton->numEvents > 0);
 
     // Initial state.
     automaton->state.currentEvent = automaton->events[0];
     automaton->state.lastEvent = automaton->state.currentEvent;
+    automaton->state.isActive = true;
 
     // Beginning of time.
     automaton->state.currentTemporalTag = 1;
@@ -32,13 +34,6 @@ void StartAutomaton(TeslaAutomaton* automaton)
 
 void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data, size_t dataSize)
 {
-    // If this automaton is fully deterministic, treat it as a classic automaton. This is the fast path.
-    if (automaton->flags.isDeterministic)
-    {
-        UpdateAutomatonDeterministic(automaton, event);
-        return;
-    }
-
     if (!event->flags.isDeterministic)
     {
         if (event->state.store == NULL || event->state.store->type == TESLA_STORE_INVALID)
@@ -65,6 +60,18 @@ void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data, s
 
 void UpdateAutomatonDeterministic(TeslaAutomaton* automaton, TeslaEvent* event)
 {
+    //   DebugAutomaton(automaton);
+    /*  printf("Transitioning - from:\t");
+    DebugEvent(automaton->state.currentEvent); */
+
+    if (!automaton->state.isActive)
+        return;
+
+    if (automaton->state.currentEvent == NULL && automaton->state.isActive)
+    {
+        TeslaAssertionFail(automaton);
+    }
+
     if (automaton->state.currentEvent == event) // Double event is an error. Reset the automaton to the first event.
     {
         automaton->state.currentEvent = automaton->events[0];
@@ -72,41 +79,49 @@ void UpdateAutomatonDeterministic(TeslaAutomaton* automaton, TeslaEvent* event)
     else
     {
         TeslaEvent* current = automaton->state.currentEvent;
+
+        assert(current != NULL);
+
+        bool foundSuccessor = false;
+
         for (size_t i = 0; i < current->numSuccessors; ++i)
         {
-            if (current->successors[i] == current) // Found a successor, this is a correct path.
+            if (current->successors[i] == event) // Found a successor, this is a correct path.
             {
                 automaton->state.currentEvent = current->successors[i];
-                return;
+                foundSuccessor = true;
+                break;
             }
         }
 
         // This was not a successor of the previous event. Reset the automaton to the first event.
-        automaton->state.currentEvent = automaton->events[0];
+        if (!foundSuccessor)
+            automaton->state.currentEvent = automaton->events[0];
+    }
+
+    /* printf("Transitioning - to:\t");
+    DebugEvent(automaton->state.currentEvent); */
+
+    if (automaton->state.currentEvent->flags.isEnd)
+    {
+        TA_Reset(automaton);
+        automaton->state.isActive = true;
     }
 }
 
-void EndAutomaton(TeslaAutomaton* automaton)
+void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event)
 {
-    TeslaEvent* current = automaton->state.currentEvent;
-    if (current != NULL)
-    {
-        for (size_t i = 0; i < current->numSuccessors; ++i)
-        {
-            if (current->successors[i] == current) // Found a successor, this is a correct path.
-            {
-                automaton->state.currentEvent = current->successors[i];
-                break;
-            }
-        }
-    }
+    assert(automaton->state.isActive);
 
-    if (automaton->state.currentEvent == NULL || !automaton->state.currentEvent->flags.isEnd)
+    UpdateAutomatonDeterministic(automaton, event);
+
+    // If this automaton is still active, the assertion failed.
+    if (automaton->state.currentEvent != NULL)
     {
         TeslaAssertionFail(automaton);
     }
 
-    TA_Reset(automaton);
+    automaton->state.isActive = false;
 }
 
 void DebugEvent(TeslaEvent* event)

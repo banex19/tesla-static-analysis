@@ -12,6 +12,7 @@
 #include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/LegacyPassManager.h>
+#include <llvm/IR/Verifier.h>
 #include <llvm/Pass.h>
 #include <llvm/Support/raw_ostream.h>
 
@@ -56,7 +57,7 @@ bool InstrumentPass::runOnModule(Module& M)
         {
             TeslaTypes::Populate(M);
             Passes.add(new ThinTeslaInstrumenter{*Manifest});
-            Passes.add(new tesla::RemoveInstrumenter(*Manifest, SuppressDI));
+        //    Passes.add(new tesla::RemoveInstrumenter(*Manifest, SuppressDI));
         }
     }
     else
@@ -75,6 +76,9 @@ bool InstrumentPass::runOnModule(Module& M)
     }
 
     Passes.run(M);
+
+    assert(verifyModule(M, &llvm::errs()) == false);
+
     return true;
 }
 

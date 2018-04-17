@@ -83,7 +83,7 @@ void ThinTeslaAssertion::ConvertExp(const Expression& exp)
     }
     else if (exp.type() == tesla::Expression_Type_ASSERTION_SITE)
     {
-        ConvertAssertionSite(exp);
+        ConvertAssertionSite(exp.assertsite());
     }
 }
 
@@ -104,12 +104,13 @@ void ThinTeslaAssertion::ConvertBoolean(const BooleanExpr& exp)
     }
 }
 
-void ThinTeslaAssertion::ConvertAssertionSite(const Expression& site)
+void ThinTeslaAssertion::ConvertAssertionSite(const AssertionSite& site)
 {
-    const auto& location = site.assertsite().location();
+    const auto& location = site.location();
 
     std::shared_ptr<ThinTeslaAssertionSite> event =
-        std::make_shared<ThinTeslaAssertionSite>(location.filename(), (size_t)location.line(), (size_t)location.counter());
+        std::make_shared<ThinTeslaAssertionSite>(site.function().name(),
+                                                 location.filename(), (size_t)location.line(), (size_t)location.counter());
 
     AddEvent(event);
     assertionFilename = location.filename();
@@ -131,7 +132,13 @@ void ThinTeslaAssertion::ConvertFunction(const Expression& fun)
         }
     }
 
-    if (hasParameterizedArgs || function.has_expectedreturnvalue())
+    if (!hasParameterizedArgs)
+    {
+        if (function.has_expectedreturnvalue() && function.expectedreturnvalue().type() != Argument_Type_Any)
+            hasParameterizedArgs = true;
+    }
+
+    if (hasParameterizedArgs)
     {
         std::shared_ptr<ThinTeslaParametricFunction> event =
             std::make_shared<ThinTeslaParametricFunction>(function.function().name(), function.context() == FunctionEvent_CallContext_Callee);

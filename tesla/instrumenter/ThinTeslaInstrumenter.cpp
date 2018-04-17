@@ -1,4 +1,5 @@
 #include "ThinTeslaInstrumenter.h"
+#include "Names.h"
 
 using namespace llvm;
 
@@ -24,7 +25,7 @@ bool ThinTeslaInstrumenter::runOnModule(llvm::Module& M)
 
     for (auto& assertion : assertions)
     {
-        bool needsInstrumentation = (M.getName() == assertion.assertionFilename);
+        bool needsInstrumentation = (GetFilenameFromPath(M.getName()) == GetFilenameFromPath(assertion.assertionFilename));
 
         if (!needsInstrumentation)
         {
@@ -54,7 +55,7 @@ void ThinTeslaInstrumenter::Instrument(llvm::Module& M, ThinTeslaAssertion& asse
 {
     for (auto event : assertion.events)
     {
-        event->Accept(M, assertion, *this);
+        event.get()->Accept(M, assertion, *this);
     }
 }
 
@@ -64,12 +65,58 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
 
 void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaParametricFunction& event)
 {
-    GlobalVariable* global = GetEventGlobal(M, assertion, event);
+}
+
+llvm::CallInst* ThinTeslaInstrumenter::GetTeslaAssertionInstr(llvm::Function* function, ThinTeslaAssertionSite& event)
+{
+    for (auto& block : *function)
+    {
+        for (auto& inst : block)
+        {
+            CallInst* callInst = dyn_cast<CallInst>(&inst);
+
+            if (callInst != nullptr)
+            {
+                if (callInst->getCalledFunction()->getName() == tesla::INLINE_ASSERTION)
+                {
+                    ConstantInt* line = dyn_cast<ConstantInt>(callInst->getOperand(2));
+                    ConstantInt* counter = dyn_cast<ConstantInt>(callInst->getOperand(3));
+
+                    assert(line != nullptr && counter != nullptr);
+
+                    if ((line->getLimitedValue(std::numeric_limits<int32_t>::max()) == event.line) &&
+                        (counter->getLimitedValue(std::numeric_limits<int32_t>::max()) == event.counter))
+                        return callInst;
+                }
+            }
+        }
+    }
+
+    return nullptr;
 }
 
 void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaAssertionSite& event)
 {
-    GlobalVariable* global = GetEventGlobal(M, assertion, event);
+    Function* function = M.getFunction(event.functionName);
+
+    Function* updateAutomaton = TeslaTypes::GetUpdateAutomatonDeterministic(M);
+
+    if (!function->isDeclaration())
+    {
+        assert(!event.IsInstrumented());
+        assert(event.isDeterministic);
+        assert(!event.IsStart() && !event.IsEnd());
+
+        CallInst* callInst = GetTeslaAssertionInstr(function, event);
+        assert(callInst != nullptr);
+
+        IRBuilder<> builder(callInst);
+        builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event)});
+
+        callInst->eraseFromParent();
+
+        event.SetInstrumented();
+    }
 }
 
 Instruction* GetFirstInstruction(llvm::Function* function)
@@ -89,21 +136,48 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
     Function* function = M.getFunction(event.functionName);
     GlobalVariable* global = GetEventGlobal(M, assertion, event);
 
-    Function* debugEvent = (Function*)M.getOrInsertFunction("DebugEvent",
-                                                            FunctionType::get(Type::getVoidTy(M.getContext()), TeslaTypes::EventTy->getPointerTo()));
-
-    Function* debugAutomaton = (Function*)M.getOrInsertFunction("DebugAutomaton",
-                                                                FunctionType::get(Type::getVoidTy(M.getContext()), TeslaTypes::AutomatonTy->getPointerTo()));
+    Function* updateAutomaton = TeslaTypes::GetUpdateAutomatonDeterministic(M);
+    Function* startAutomaton = TeslaTypes::GetStartAutomaton(M);
 
     if (!function->isDeclaration())
     {
+        assert(!event.IsInstrumented());
+
         if (event.isDeterministic)
         {
             IRBuilder<> builder(GetFirstInstruction(function));
-            builder.CreateCall(debugEvent, global);
-            builder.CreateCall(debugAutomaton, GetAutomatonGlobal(M, assertion));
 
-            // llvm::errs() << *function << "\n";
+            if (event.IsStart())
+            {
+                builder.CreateCall(startAutomaton, {GetAutomatonGlobal(M, assertion)});
+            }
+            else if (event.IsEnd())
+            {
+                InstrumentEveryExit(M, function, assertion, event);
+            }
+            else
+            {
+                builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), global});
+            }
+        }
+
+        event.SetInstrumented();
+    }
+}
+
+void ThinTeslaInstrumenter::InstrumentEveryExit(llvm::Module& M, Function* function, ThinTeslaAssertion& assertion, ThinTeslaFunction& event)
+{
+    GlobalVariable* global = GetEventGlobal(M, assertion, event);
+
+    Function* endAutomaton = TeslaTypes::GetEndAutomaton(M);
+
+    for (auto& block : *function)
+    {
+        //  llvm::errs() << "Terminator: " << *block.getTerminator() << "\n";
+        if (dyn_cast<ReturnInst>(block.getTerminator()) != nullptr)
+        {
+            IRBuilder<> builder(block.getTerminator());
+            builder.CreateCall(endAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event)});
         }
     }
 }
@@ -177,8 +251,6 @@ GlobalVariable* ThinTeslaInstrumenter::GetEventGlobal(llvm::Module& M, ThinTesla
 
     var->setConstant(false); // This variable will be manipulated by libtesla.
 
-    //  llvm::errs() << "Event " << event.id << " has " << event.successors.size() << " successors\n";
-
     return var;
 }
 
@@ -204,6 +276,7 @@ GlobalVariable* ThinTeslaInstrumenter::GetAutomatonGlobal(llvm::Module& M, ThinT
                                           TeslaTypes::GetSizeT(C, 0),
                                           ConstantPointerNull::get(TeslaTypes::EventTy->getPointerTo()),
                                           ConstantPointerNull::get(TeslaTypes::EventTy->getPointerTo()),
+                                          TeslaTypes::GetInt(C, 8, 0),
                                           TeslaTypes::GetInt(C, 8, 0));
 
     Constant* init = ConstantStruct::get(TeslaTypes::AutomatonTy, eventsArrayPtr, cFlags,
@@ -213,6 +286,8 @@ GlobalVariable* ThinTeslaInstrumenter::GetAutomatonGlobal(llvm::Module& M, ThinT
 
     GlobalVariable* var = new GlobalVariable(M, TeslaTypes::AutomatonTy, true,
                                              GlobalValue::ExternalLinkage, init, autID);
+
+    var->setConstant(false);
 
     return var;
 }
@@ -230,7 +305,7 @@ GlobalVariable* ThinTeslaInstrumenter::GetStringGlobal(llvm::Module& M, const st
     GlobalVariable* var = new GlobalVariable(M, strConst->getType(), true,
                                              GlobalValue::ExternalLinkage, strConst, globalID);
 
-    return var;
+    return var; // This variable will be manipulated by libtesla.
 }
 
 std::string ThinTeslaInstrumenter::GetAutomatonID(ThinTeslaAssertion& assertion)
@@ -243,4 +318,13 @@ std::string ThinTeslaInstrumenter::GetEventID(ThinTeslaAssertion& assertion, Thi
 {
     return assertion.assertionFilename + "_" + std::to_string(assertion.assertionLine) + "_" +
            std::to_string(assertion.assertionCounter) + "_" + std::to_string(event.id);
+}
+
+std::string ThinTeslaInstrumenter::GetFilenameFromPath(const std::string& path)
+{
+    auto pos = path.find_last_of('/');
+    if (pos == std::string::npos || (pos == (path.size() - 1)))
+        return path;
+
+    return path.substr(pos + 1);
 }
