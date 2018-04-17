@@ -131,37 +131,86 @@ Instruction* GetFirstInstruction(llvm::Function* function)
     return nullptr;
 }
 
+void ThinTeslaInstrumenter::InstrumentInstruction(llvm::Module& M, llvm::Instruction* instr, ThinTeslaAssertion& assertion, ThinTeslaFunction& event)
+{
+    Function* updateAutomaton = TeslaTypes::GetUpdateAutomatonDeterministic(M);
+    Function* startAutomaton = TeslaTypes::GetStartAutomaton(M);
+    Function* endAutomaton = TeslaTypes::GetEndAutomaton(M);
+
+    GlobalVariable* global = GetEventGlobal(M, assertion, event);
+
+    IRBuilder<> builder(M.getContext());
+
+    if (event.IsEnd())
+    {
+        assert(!event.calleeInstrumentation);
+        builder.SetInsertPoint(instr->getNextNode());
+    }
+    else
+    {
+        builder.SetInsertPoint(instr);
+    }
+
+    if (event.IsStart())
+    {
+        builder.CreateCall(startAutomaton, {GetAutomatonGlobal(M, assertion)});
+    }
+    else if (event.IsEnd())
+    {
+        builder.CreateCall(endAutomaton, {GetAutomatonGlobal(M, assertion), global});
+    }
+    else
+    {
+        builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), global});
+    }
+}
+
 void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaFunction& event)
 {
     Function* function = M.getFunction(event.functionName);
-    GlobalVariable* global = GetEventGlobal(M, assertion, event);
 
-    Function* updateAutomaton = TeslaTypes::GetUpdateAutomatonDeterministic(M);
-    Function* startAutomaton = TeslaTypes::GetStartAutomaton(M);
-
-    if (!function->isDeclaration())
+    if (function != nullptr && !function->isDeclaration() && event.calleeInstrumentation)
     {
         assert(!event.IsInstrumented());
 
         if (event.isDeterministic)
         {
-            IRBuilder<> builder(GetFirstInstruction(function));
-
-            if (event.IsStart())
-            {
-                builder.CreateCall(startAutomaton, {GetAutomatonGlobal(M, assertion)});
-            }
-            else if (event.IsEnd())
+            if (event.IsEnd())
             {
                 InstrumentEveryExit(M, function, assertion, event);
             }
             else
             {
-                builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), global});
+                InstrumentInstruction(M, GetFirstInstruction(function), assertion, event);
             }
         }
 
         event.SetInstrumented();
+    }
+
+    if (!event.calleeInstrumentation) // We must instrument every call to the event function.
+    {
+        auto functions = CollectModuleFunctions(M);
+
+        for (auto& fName : functions)
+        {
+            Function* f = M.getFunction(fName);
+            if (f != nullptr && !f->isDeclaration())
+            {
+                for (auto& block : *f)
+                {
+                    for (auto& instr : block)
+                    {
+                        CallInst* callInst = dyn_cast<CallInst>(&instr);
+                        if (callInst != nullptr && callInst->getCalledFunction() == function)
+                        {
+                            IRBuilder<> builder(callInst);
+                            InstrumentInstruction(M, callInst, assertion, event);
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -20,7 +20,7 @@ typedef enum { false, true } bool;
 #define EXTERN_C_END
 #endif
 
-#ifdef _DEBUG
+#ifndef RELEASE 
 #define DEBUG_ASSERT(x) \
     do                  \
     {                   \

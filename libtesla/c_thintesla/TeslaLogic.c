@@ -15,9 +15,9 @@
 
 void StartAutomaton(TeslaAutomaton* automaton)
 {
-    assert(automaton != NULL);
-    assert(!automaton->state.isActive);
-    assert(automaton->numEvents > 0);
+    DEBUG_ASSERT(automaton != NULL);
+    DEBUG_ASSERT(!automaton->state.isActive);
+    DEBUG_ASSERT(automaton->numEvents > 0);
 
     // Initial state.
     automaton->state.currentEvent = automaton->events[0];
@@ -58,11 +58,31 @@ void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data, s
     }
 }
 
+const size_t NO_SUCC = SIZE_MAX;
+
+size_t GetSuccessor(TeslaEvent* event, TeslaEvent* successor)
+{
+    for (size_t i = 0; i < event->numSuccessors; ++i)
+    {
+        if (event->successors[i] == successor)
+            return i;
+    }
+
+    return NO_SUCC;
+}
+
+//#define PRINT_TRANSITIONS
+
 void UpdateAutomatonDeterministic(TeslaAutomaton* automaton, TeslaEvent* event)
 {
-    //   DebugAutomaton(automaton);
-    /*  printf("Transitioning - from:\t");
-    DebugEvent(automaton->state.currentEvent); */
+    bool triedAgain = false;
+
+//   DebugAutomaton(automaton);
+
+#ifdef PRINT_TRANSITIONS
+    printf("Transitioning - from:\t");
+    DebugEvent(automaton->state.currentEvent);
+#endif
 
     if (!automaton->state.isActive)
         return;
@@ -72,35 +92,56 @@ void UpdateAutomatonDeterministic(TeslaAutomaton* automaton, TeslaEvent* event)
         TeslaAssertionFail(automaton);
     }
 
-    if (automaton->state.currentEvent == event) // Double event is an error. Reset the automaton to the first event.
+tryagain:
+    if (automaton->state.currentEvent == event) // Double event is an error. Reset the automaton to the first event and retry.
     {
+        DEBUG_ASSERT(event != automaton->events[0]);
         automaton->state.currentEvent = automaton->events[0];
+        if (!triedAgain)
+        {
+            triedAgain = true;
+            goto tryagain;
+        }
     }
     else
     {
         TeslaEvent* current = automaton->state.currentEvent;
 
-        assert(current != NULL);
+        DEBUG_ASSERT(current != NULL);
 
         bool foundSuccessor = false;
 
-        for (size_t i = 0; i < current->numSuccessors; ++i)
+        size_t succIndex = GetSuccessor(current, event);
+        if (succIndex != NO_SUCC)
         {
-            if (current->successors[i] == event) // Found a successor, this is a correct path.
-            {
-                automaton->state.currentEvent = current->successors[i];
-                foundSuccessor = true;
-                break;
-            }
+            automaton->state.currentEvent = current->successors[succIndex];
+            foundSuccessor = true;
         }
 
-        // This was not a successor of the previous event. Reset the automaton to the first event.
         if (!foundSuccessor)
+        {
+            // If both events are in the same OR block (whatever their relative order), this is fine.
+            if (current->flags.isOR && event->flags.isOR && GetSuccessor(event, current) != NO_SUCC)
+                foundSuccessor = true;
+        }
+
+        // This was not a successor of the previous event. Reset the automaton to the first event and retry.
+        if (!foundSuccessor)
+        {
+            DEBUG_ASSERT(event != automaton->events[0]);
             automaton->state.currentEvent = automaton->events[0];
+            if (!triedAgain)
+            {
+                triedAgain = true;
+                goto tryagain;
+            }
+        }
     }
 
-    /* printf("Transitioning - to:\t");
-    DebugEvent(automaton->state.currentEvent); */
+#ifdef PRINT_TRANSITIONS
+    printf("Transitioning - to:\t");
+    DebugEvent(automaton->state.currentEvent);
+#endif
 
     if (automaton->state.currentEvent->flags.isEnd)
     {
@@ -111,7 +152,8 @@ void UpdateAutomatonDeterministic(TeslaAutomaton* automaton, TeslaEvent* event)
 
 void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event)
 {
-    assert(automaton->state.isActive);
+    DEBUG_ASSERT(automaton->state.isActive);
+    DEBUG_ASSERT(false);
 
     UpdateAutomatonDeterministic(automaton, event);
 
