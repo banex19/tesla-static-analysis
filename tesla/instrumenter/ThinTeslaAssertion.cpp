@@ -169,7 +169,12 @@ void ThinTeslaAssertion::ConvertFunction(const Expression& fun)
 void ThinTeslaAssertion::AddArgumentToParametricEvent(std::shared_ptr<ThinTeslaParametricFunction> event, const tesla::Argument& arg, bool returnValue)
 {
     if (arg.type() == Argument_Type_Any)
+    {
+        if (!returnValue)
+            event->numTotalParams++;
+            
         return;
+    }
 
     if (arg.type() != Argument_Type_Constant && arg.type() != Argument_Type_Variable)
     {
@@ -181,15 +186,16 @@ void ThinTeslaAssertion::AddArgumentToParametricEvent(std::shared_ptr<ThinTeslaP
 
     if (arg.type() == Argument_Type_Constant)
     {
-        param = ThinTeslaParameter(arg.value());
+        param = ThinTeslaParameter(event->numTotalParams, arg.value());
     }
     else
     {
-        param = ThinTeslaParameter(arg.name());
+        param = ThinTeslaParameter(event->numTotalParams, arg.name());
     }
 
     if (!returnValue)
     {
+        event->numTotalParams++;
         event->AddParameter(param);
     }
     else

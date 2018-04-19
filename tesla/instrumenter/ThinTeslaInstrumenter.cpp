@@ -61,10 +61,59 @@ void ThinTeslaInstrumenter::Instrument(llvm::Module& M, ThinTeslaAssertion& asse
 
 void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaEvent& event)
 {
+    assert(false);
+}
+
+std::vector<llvm::Argument*> ThinTeslaInstrumenter::GetFunctionArguments(llvm::Function* function)
+{
+    std::vector<llvm::Argument*> args;
+    for (auto& arg : function->args())
+    {
+        args.push_back(&arg);
+    }
+
+    return args;
 }
 
 void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaParametricFunction& event)
 {
+    Function* function = M.getFunction(event.functionName);
+
+    auto& C = M.getContext();
+
+    if (!function->isDeclaration() && event.params.size() > 0)
+    {
+        auto args = GetFunctionArguments(function);
+
+        ConstantInt* totalArgSize = TeslaTypes::GetInt(C, 32, event.params.size());
+
+        IRBuilder<> builder{GetFirstInstruction(function)};
+        auto array = builder.CreateAlloca(Type::getInt64Ty(C), totalArgSize, "args_array");
+
+        size_t i = 0;
+        for (auto& param : event.params)
+        {
+            Argument* arg = args[param.index];
+
+            if (arg->getType()->isIntegerTy())
+                builder.CreateStore(builder.CreateCast(Instruction::CastOps::SExt, arg, Type::getInt64Ty(C)),
+                                    builder.CreateGEP(array, TeslaTypes::GetInt(C, 32, i)));
+            else if (arg->getType()->isPointerTy())
+                builder.CreateStore(builder.CreateCast(Instruction::CastOps::PtrToInt, arg, Type::getInt64Ty(C)),
+                                    builder.CreateGEP(array, TeslaTypes::GetInt(C, 32, i)));
+            else if (arg->getType()->isFloatingPointTy())
+                builder.CreateStore(builder.CreateCast(Instruction::CastOps::FPToSI, arg, Type::getInt64Ty(C)),
+                                    builder.CreateGEP(array, TeslaTypes::GetInt(C, 32, i)));
+            else
+                assert(false && "Invalid argument type");
+
+            ++i;
+        }
+
+        Function* test = (Function*)M.getOrInsertFunction("testArray", FunctionType::get(Type::getVoidTy(C),
+                                                                              Type::getInt64PtrTy(C), Type::getInt32Ty(C)));
+        builder.CreateCall(test, {builder.CreateBitCast(array, Type::getInt64PtrTy(C)), totalArgSize});
+    }
 }
 
 llvm::CallInst* ThinTeslaInstrumenter::GetTeslaAssertionInstr(llvm::Function* function, ThinTeslaAssertionSite& event)
@@ -108,6 +157,8 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
         assert(!event.IsStart() && !event.IsEnd());
 
         CallInst* callInst = GetTeslaAssertionInstr(function, event);
+        if (callInst == nullptr)
+            llvm::errs() << *function << "\n";
         assert(callInst != nullptr);
 
         IRBuilder<> builder(callInst);
@@ -119,7 +170,7 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
     }
 }
 
-Instruction* GetFirstInstruction(llvm::Function* function)
+Instruction* ThinTeslaInstrumenter::GetFirstInstruction(llvm::Function* function)
 {
     BasicBlock& block = function->getEntryBlock();
 
@@ -169,7 +220,7 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
 {
     Function* function = M.getFunction(event.functionName);
 
-    if (function != nullptr && !function->isDeclaration() && event.calleeInstrumentation)
+    if (!function->isDeclaration() && event.calleeInstrumentation)
     {
         assert(!event.IsInstrumented());
 

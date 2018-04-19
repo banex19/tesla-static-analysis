@@ -102,19 +102,21 @@ struct ThinTeslaParameter
     {
     }
 
-    ThinTeslaParameter(size_t constantValue)
-        : isConstant(true), constantValue(constantValue)
+    ThinTeslaParameter(size_t index, size_t constantValue)
+        : isConstant(true), constantValue(constantValue), index(index)
     {
     }
 
-    ThinTeslaParameter(const std::string& varName)
-        : isConstant(false), constantValue(constantValue)
+    ThinTeslaParameter(size_t index ,const std::string& varName)
+        : isConstant(false), constantValue(constantValue), index(index)
     {
     }
 
     bool isConstant = false;
     size_t constantValue = 0;
     std::string varName = "";
+
+    size_t index = 0;
 };
 
 class ThinTeslaParametricFunction : public ThinTeslaFunction
@@ -143,6 +145,8 @@ class ThinTeslaParametricFunction : public ThinTeslaFunction
 
     std::vector<ThinTeslaParameter> params;
     ThinTeslaParameter returnValue;
+
+    size_t numTotalParams = 0;
 };
 
 class ThinTeslaAssertion
