@@ -56,6 +56,8 @@ class ThinTeslaEvent
     bool IsEnd() { return successors.size() == 0; }
     bool IsStart() { return id == 0; }
 
+    virtual size_t GetMatchDataSize() { return 0; }
+
     size_t id = 0;
     std::vector<std::shared_ptr<ThinTeslaEvent>> successors;
 
@@ -103,18 +105,20 @@ struct ThinTeslaParameter
     }
 
     ThinTeslaParameter(size_t index, size_t constantValue)
-        : isConstant(true), constantValue(constantValue), index(index)
+        : exists(true), isConstant(true), constantValue(constantValue), index(index)
     {
     }
 
-    ThinTeslaParameter(size_t index ,const std::string& varName)
-        : isConstant(false), constantValue(constantValue), index(index)
+    ThinTeslaParameter(size_t index, const std::string& varName)
+        : exists(true), isConstant(false), constantValue(constantValue), index(index)
     {
     }
 
     bool isConstant = false;
     size_t constantValue = 0;
     std::string varName = "";
+
+    bool exists = false;
 
     size_t index = 0;
 };
@@ -141,6 +145,21 @@ class ThinTeslaParametricFunction : public ThinTeslaFunction
         if (!val.isConstant)
             isDeterministic = false;
         returnValue = val;
+    }
+
+    size_t GetMatchDataSize()
+    {
+        size_t size = 0;
+        for (auto& param : params)
+        {
+            if (!param.isConstant)
+                size++;
+        }
+
+        if (returnValue.exists && !returnValue.isConstant)
+            size++;
+            
+        return size;
     }
 
     std::vector<ThinTeslaParameter> params;

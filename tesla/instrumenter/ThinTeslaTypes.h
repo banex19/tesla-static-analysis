@@ -3,9 +3,9 @@
 #include "../../libtesla/c_thintesla/TeslaState.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "ThinTeslaAssertion.h"
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
-#include "ThinTeslaAssertion.h"
 
 #include <iostream>
 
@@ -24,6 +24,28 @@ class TeslaTypes
     static ConstantInt* GetSizeT(LLVMContext& C, size_t val)
     {
         return GetInt(C, sizeof(size_t) * 8, val);
+    }
+    static Type* GetMatchType(LLVMContext& C)
+    {
+        return Type::getInt64Ty(C);
+    }
+    static Constant* GetMatchValue(LLVMContext& C, size_t val)
+    {
+        return ConstantInt::get(GetMatchType(C), val);
+    }
+
+    static llvm::Instruction::CastOps GetCastToInteger(Type* type)
+    {
+        if (type->isIntegerTy())
+            return llvm::Instruction::CastOps::SExt;
+        else if (type->isPointerTy())
+            return llvm::Instruction::CastOps::PtrToInt;
+        else if (type->isFloatingPointTy())
+            return llvm::Instruction::CastOps::FPToSI;
+        else
+            assert(false && "Invalid type to cast to integer");
+
+        return llvm::Instruction::CastOps::BitCast;
     }
 
     static Function* GetUpdateAutomatonDeterministic(Module& M);

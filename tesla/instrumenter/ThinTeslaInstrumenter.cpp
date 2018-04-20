@@ -81,38 +81,76 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
 
     auto& C = M.getContext();
 
-    if (!function->isDeclaration() && event.params.size() > 0)
+    if (function->isDeclaration())
+        return;
+
+    BasicBlock* originalEntry = &function->getEntryBlock();
+    BasicBlock* instrumentBlock = nullptr;
+
+    auto args = GetFunctionArguments(function);
+
+    if (event.GetMatchDataSize() > 0) // Store runtime parameters to an array on the stack.
     {
-        auto args = GetFunctionArguments(function);
+        ConstantInt* totalArgSize = TeslaTypes::GetInt(C, 32, event.GetMatchDataSize());
 
-        ConstantInt* totalArgSize = TeslaTypes::GetInt(C, 32, event.params.size());
+        instrumentBlock = BasicBlock::Create(C, "instrumentation", function, originalEntry);
+        IRBuilder<> builder{instrumentBlock};
 
-        IRBuilder<> builder{GetFirstInstruction(function)};
-        auto array = builder.CreateAlloca(Type::getInt64Ty(C), totalArgSize, "args_array");
+        auto array = builder.CreateAlloca(TeslaTypes::GetMatchType(C), totalArgSize, "args_array");
 
         size_t i = 0;
         for (auto& param : event.params)
         {
+            if (param.isConstant)
+                continue;
+
             Argument* arg = args[param.index];
 
-            if (arg->getType()->isIntegerTy())
-                builder.CreateStore(builder.CreateCast(Instruction::CastOps::SExt, arg, Type::getInt64Ty(C)),
-                                    builder.CreateGEP(array, TeslaTypes::GetInt(C, 32, i)));
-            else if (arg->getType()->isPointerTy())
-                builder.CreateStore(builder.CreateCast(Instruction::CastOps::PtrToInt, arg, Type::getInt64Ty(C)),
-                                    builder.CreateGEP(array, TeslaTypes::GetInt(C, 32, i)));
-            else if (arg->getType()->isFloatingPointTy())
-                builder.CreateStore(builder.CreateCast(Instruction::CastOps::FPToSI, arg, Type::getInt64Ty(C)),
-                                    builder.CreateGEP(array, TeslaTypes::GetInt(C, 32, i)));
-            else
-                assert(false && "Invalid argument type");
+            builder.CreateStore(builder.CreateCast(TeslaTypes::GetCastToInteger(arg->getType()), arg, TeslaTypes::GetMatchType(C)),
+                                builder.CreateGEP(array, TeslaTypes::GetInt(C, 32, i)));
 
             ++i;
         }
 
         Function* test = (Function*)M.getOrInsertFunction("testArray", FunctionType::get(Type::getVoidTy(C),
-                                                                              Type::getInt64PtrTy(C), Type::getInt32Ty(C)));
-        builder.CreateCall(test, {builder.CreateBitCast(array, Type::getInt64PtrTy(C)), totalArgSize});
+                                                                                         TeslaTypes::GetMatchType(C)->getPointerTo(),
+                                                                                         Type::getInt32Ty(C)));
+        builder.CreateCall(test, {builder.CreateBitCast(array, TeslaTypes::GetMatchType(C)->getPointerTo()), totalArgSize});
+
+        builder.CreateBr(originalEntry);
+    }
+
+    if (!function->isDeclaration()) // Statically match constant arguments.
+    {
+        std::vector<ThinTeslaParameter> constParams;
+
+        for (auto& param : event.params)
+        {
+            if (param.isConstant)
+                constParams.push_back(param);
+        }
+
+        if (constParams.size() > 0)
+        {
+            BasicBlock* thenBlock = instrumentBlock;
+
+            for (int i = (int)constParams.size() - 1; i >= 0; --i)
+            {
+                size_t index = constParams[i].index;
+                size_t val = constParams[i].constantValue;
+                auto arg = args[index];
+
+                BasicBlock* ifBlock = BasicBlock::Create(C, "if_" + std::to_string(index), function, thenBlock);
+
+                IRBuilder<> builder{ifBlock};
+                Value* cond = builder.CreateICmpEQ(builder.CreateCast(TeslaTypes::GetCastToInteger(arg->getType()), arg, TeslaTypes::GetMatchType(C)),
+                                                   ConstantInt::get(TeslaTypes::GetMatchType(C), val));
+
+                builder.CreateCondBr(cond, thenBlock, originalEntry);
+
+                thenBlock = ifBlock;
+            }
+        }
     }
 }
 
@@ -341,7 +379,21 @@ GlobalVariable* ThinTeslaInstrumenter::GetEventGlobal(llvm::Module& M, ThinTesla
     flags.isEnd = event.successors.size() == 0;
     Constant* cFlags = ConstantStruct::get(TeslaTypes::EventFlagsTy, TeslaTypes::GetInt(C, 8, *(uint8_t*)(&flags)));
 
-    Constant* state = ConstantStruct::get(TeslaTypes::EventStateTy, ConstantPointerNull::get(Int8PtrTy), ConstantPointerNull::get(Int8PtrTy));
+    Constant* matchArray = ConstantPointerNull::get(Int8PtrTy);
+
+    size_t matchDataSize = event.GetMatchDataSize();
+    if (matchDataSize > 0)
+    {
+        ArrayType* matchArrayTy = ArrayType::get(TeslaTypes::GetMatchType(C), matchDataSize);
+        Constant* matchArray = ConstantArray::get(matchArrayTy, TeslaTypes::GetMatchValue(C, 0));
+        GlobalVariable* matchArrayGlobal = new GlobalVariable(M, matchArrayTy, true, GlobalValue::ExternalLinkage, matchArray, eventID + "_match");
+
+        matchArrayGlobal->setConstant(false); // This array will be populated at runtime.
+
+        matchArray = ConstantExpr::getBitCast(matchArrayGlobal, Int8PtrTy);
+    }
+
+    Constant* state = ConstantStruct::get(TeslaTypes::EventStateTy, ConstantPointerNull::get(Int8PtrTy), matchArray);
 
     Constant* init = ConstantStruct::get(TeslaTypes::EventTy, eventsArrayPtr, cFlags,
                                          TeslaTypes::GetSizeT(C, event.successors.size()), TeslaTypes::GetSizeT(C, event.id), state);
