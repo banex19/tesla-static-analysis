@@ -13,10 +13,9 @@ void TA_Reset(TeslaAutomaton* automaton)
             if (event->state.store != NULL)
                 TeslaStore_Destroy(event->state.store);
 
-            TeslaFree(event->state.matchData);
             TeslaFree(event->state.store);
 
-            memset(&event->state, 0, sizeof(event->state));
+            memset(event->state.matchData, 0, sizeof(size_t) * event->state.matchDataSize);
         }
     }
 }

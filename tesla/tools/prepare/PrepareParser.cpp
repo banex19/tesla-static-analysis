@@ -641,7 +641,7 @@ bool Parser::ParseOptional(Expression* E, const CallExpr* Call, Flags F)
         return false;
     }
 
-    // Implemented as (null || optional_expression).
+    // Implemented as (null ^ optional_expression).
     E->set_type(Expression::BOOLEAN_EXPR);
     BooleanExpr* B = E->mutable_booleanexpr();
     B->set_operation(BooleanExpr::BE_Xor);
@@ -669,11 +669,11 @@ bool Parser::ParseFunctionCall(Expression* E, const BinaryOperator* Bop,
 
     Expr* RHS = Bop->getRHS();
 
-    if (!(LHSisICE ^ RHS->isIntegerConstantExpr(Ctx)))
+   /* if (!(LHSisICE ^ RHS->isIntegerConstantExpr(Ctx)))
     {
         ReportError("one of {LHS,RHS} must be a constant", Bop);
         return false;
-    }
+    } */
 
     Expr* RetVal = (LHSisICE ? LHS : RHS)->IgnoreParenCasts();
     Expr* FnCall = (LHSisICE ? RHS : LHS)->IgnoreParenCasts();
@@ -1379,6 +1379,8 @@ void Parser::ReportError(StringRef Message, const SourceLocation& Start,
 
     DiagnosticsEngine& Diag = Ctx.getDiagnostics();
     int DiagID = Diag.getCustomDiagID(Level, "TESLA");
+
+    llvm::errs() << "PARSER ERROR: " << Message << "\n";
 
     Diag.Report(Start, DiagID) << Range;
 }

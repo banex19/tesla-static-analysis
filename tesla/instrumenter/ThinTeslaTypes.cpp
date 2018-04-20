@@ -53,7 +53,7 @@ void TeslaTypes::PopulateEventTy(Module& M)
     //IntegerType* IntPtrTy = DataLayout(&M).getIntPtrType(C);
 
     EventFlagsTy = GetStructType("TeslaEventFlags", {Int8Ty}, M, TESLA_STRUCTS_PACKED);
-    EventStateTy = GetStructType("TeslaEventState", {VoidPtrTy, Int8PtrTy}, M, TESLA_STRUCTS_PACKED);
+    EventStateTy = GetStructType("TeslaEventState", {VoidPtrTy, Int8PtrTy, Int8Ty}, M, TESLA_STRUCTS_PACKED);
     EventTy = GetStructType("TeslaEvent", {VoidPtrPtrTy, EventFlagsTy, SizeTTy, SizeTTy, EventStateTy}, M, TESLA_STRUCTS_PACKED);
 }
 
@@ -85,6 +85,14 @@ Function* TeslaTypes::GetUpdateAutomatonDeterministic(Module& M)
     auto& C = M.getContext();
     return (Function*)M.getOrInsertFunction("UpdateAutomatonDeterministic", FunctionType::get(Type::getVoidTy(C),
                                                                                               AutomatonTy->getPointerTo(), EventTy->getPointerTo()));
+}
+
+Function* TeslaTypes::GetUpdateAutomaton(Module& M)
+{
+    auto& C = M.getContext();
+    return (Function*)M.getOrInsertFunction("UpdateAutomaton", FunctionType::get(Type::getVoidTy(C),
+                                                                                 {AutomatonTy->getPointerTo(), EventTy->getPointerTo(),
+                                                                                 Type::getInt8PtrTy(C)}, false));
 }
 
 Function* TeslaTypes::GetStartAutomaton(Module& M)

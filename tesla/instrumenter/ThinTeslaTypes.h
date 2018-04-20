@@ -49,6 +49,7 @@ class TeslaTypes
     }
 
     static Function* GetUpdateAutomatonDeterministic(Module& M);
+    static Function* GetUpdateAutomaton(Module& M);
     static Function* GetStartAutomaton(Module& M);
     static Function* GetEndAutomaton(Module& M);
 

@@ -23,6 +23,7 @@ typedef struct TeslaEventState
 {
     TeslaStore* store;
     uint8_t* matchData;
+    uint8_t matchDataSize;
 } TeslaEventState;
 
 typedef struct TeslaEvent

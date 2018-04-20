@@ -37,6 +37,7 @@ class ThinTeslaInstrumenter : public ThinTeslaEventVisitor, public llvm::ModuleP
     llvm::CallInst* GetTeslaAssertionInstr(llvm::Function* function, ThinTeslaAssertionSite& event);
     llvm::Instruction* GetFirstInstruction(llvm::Function* function);
     std::vector<llvm::Argument*> GetFunctionArguments(llvm::Function* function);
+    std::vector<BasicBlock*> GetEveryExit(llvm::Function* function);
 
     GlobalVariable* GetEventGlobal(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaEvent& event);
     GlobalVariable* GetEventsArray(llvm::Module& M, ThinTeslaAssertion& assertion);

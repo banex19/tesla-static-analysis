@@ -86,17 +86,18 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
 
     BasicBlock* originalEntry = &function->getEntryBlock();
     BasicBlock* instrumentBlock = nullptr;
+    Value* matchArray = nullptr;
 
     auto args = GetFunctionArguments(function);
+    ConstantInt* totalArgSize = TeslaTypes::GetInt(C, 32, event.GetMatchDataSize());
 
     if (event.GetMatchDataSize() > 0) // Store runtime parameters to an array on the stack.
     {
-        ConstantInt* totalArgSize = TeslaTypes::GetInt(C, 32, event.GetMatchDataSize());
 
         instrumentBlock = BasicBlock::Create(C, "instrumentation", function, originalEntry);
         IRBuilder<> builder{instrumentBlock};
 
-        auto array = builder.CreateAlloca(TeslaTypes::GetMatchType(C), totalArgSize, "args_array");
+        matchArray = builder.CreateAlloca(TeslaTypes::GetMatchType(C), totalArgSize, "args_array");
 
         size_t i = 0;
         for (auto& param : event.params)
@@ -107,51 +108,161 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
             Argument* arg = args[param.index];
 
             builder.CreateStore(builder.CreateCast(TeslaTypes::GetCastToInteger(arg->getType()), arg, TeslaTypes::GetMatchType(C)),
-                                builder.CreateGEP(array, TeslaTypes::GetInt(C, 32, i)));
+                                builder.CreateGEP(matchArray, TeslaTypes::GetInt(C, 32, i)));
 
             ++i;
         }
 
-        Function* test = (Function*)M.getOrInsertFunction("testArray", FunctionType::get(Type::getVoidTy(C),
+        /* Function* test = (Function*)M.getOrInsertFunction("testArray", FunctionType::get(Type::getVoidTy(C),
                                                                                          TeslaTypes::GetMatchType(C)->getPointerTo(),
                                                                                          Type::getInt32Ty(C)));
-        builder.CreateCall(test, {builder.CreateBitCast(array, TeslaTypes::GetMatchType(C)->getPointerTo()), totalArgSize});
+        builder.CreateCall(test, {builder.CreateBitCast(array, TeslaTypes::GetMatchType(C)->getPointerTo()), totalArgSize}); */
+
+        if (!event.returnValue.exists)
+        {
+            Function* updateAutomaton = TeslaTypes::GetUpdateAutomaton(M);
+            builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event),
+                                                 builder.CreateBitCast(matchArray, Type::getInt8PtrTy(C))});
+        }
 
         builder.CreateBr(originalEntry);
     }
 
-    if (!function->isDeclaration()) // Statically match constant arguments.
+    if (instrumentBlock == nullptr)
     {
-        std::vector<ThinTeslaParameter> constParams;
+        instrumentBlock = BasicBlock::Create(C, "instrumentation", function, originalEntry);
+        IRBuilder<> builder{instrumentBlock};
 
-        for (auto& param : event.params)
+        if (!event.returnValue.exists)
         {
-            if (param.isConstant)
-                constParams.push_back(param);
+            Function* updateAutomaton = TeslaTypes::GetUpdateAutomatonDeterministic(M);
+            builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event)});
         }
 
-        if (constParams.size() > 0)
+        builder.CreateBr(originalEntry);
+    }
+
+    // Statically match constant arguments.
+    std::vector<ThinTeslaParameter> constParams;
+
+    for (auto& param : event.params)
+    {
+        if (param.isConstant)
+            constParams.push_back(param);
+    }
+
+    BasicBlock* disableInstrumentationBlock = BasicBlock::Create(C, "no_instrumentation", function, instrumentBlock);
+    IRBuilder<> builder{disableInstrumentationBlock};
+    builder.CreateBr(originalEntry);
+
+    if (constParams.size() > 0)
+    {
+        BasicBlock* thenBlock = instrumentBlock;
+
+        for (int i = (int)constParams.size() - 1; i >= 0; --i)
         {
-            BasicBlock* thenBlock = instrumentBlock;
+            size_t index = constParams[i].index;
+            size_t val = constParams[i].constantValue;
+            auto arg = args[index];
 
-            for (int i = (int)constParams.size() - 1; i >= 0; --i)
-            {
-                size_t index = constParams[i].index;
-                size_t val = constParams[i].constantValue;
-                auto arg = args[index];
+            BasicBlock* ifBlock = BasicBlock::Create(C, "if_" + std::to_string(index), function, &function->getEntryBlock());
 
-                BasicBlock* ifBlock = BasicBlock::Create(C, "if_" + std::to_string(index), function, thenBlock);
+            IRBuilder<> builder{ifBlock};
+            Value* cond = builder.CreateICmpEQ(builder.CreateCast(TeslaTypes::GetCastToInteger(arg->getType()), arg, TeslaTypes::GetMatchType(C)),
+                                               ConstantInt::get(TeslaTypes::GetMatchType(C), val));
 
-                IRBuilder<> builder{ifBlock};
-                Value* cond = builder.CreateICmpEQ(builder.CreateCast(TeslaTypes::GetCastToInteger(arg->getType()), arg, TeslaTypes::GetMatchType(C)),
-                                                   ConstantInt::get(TeslaTypes::GetMatchType(C), val));
+            builder.CreateCondBr(cond, thenBlock, disableInstrumentationBlock);
 
-                builder.CreateCondBr(cond, thenBlock, originalEntry);
-
-                thenBlock = ifBlock;
-            }
+            thenBlock = ifBlock;
         }
     }
+
+    if (event.returnValue.exists)
+    {
+        IRBuilder<> builder{originalEntry->getFirstNonPHI()};
+        auto instrumentationActive = builder.CreatePHI(IntegerType::get(C, 1), 2, "instrumentation_active");
+        instrumentationActive->addIncoming(ConstantInt::get(IntegerType::get(C, 1), 1), instrumentBlock);
+        instrumentationActive->addIncoming(ConstantInt::get(IntegerType::get(C, 1), 0), disableInstrumentationBlock);
+
+        auto phiMatchArray = builder.CreatePHI(TeslaTypes::GetMatchType(C)->getPointerTo(), 2, "argsArray_PHI");
+        if (matchArray != nullptr)
+            phiMatchArray->addIncoming(matchArray, instrumentBlock);
+        else
+            phiMatchArray->addIncoming(ConstantPointerNull::get(TeslaTypes::GetMatchType(C)->getPointerTo()), instrumentBlock);
+
+        phiMatchArray->addIncoming(ConstantPointerNull::get(TeslaTypes::GetMatchType(C)->getPointerTo()), disableInstrumentationBlock);
+
+        BasicBlock* checkInstrumentationBlock = BasicBlock::Create(C, "check_instrumentation_return", function);
+        builder.SetInsertPoint(checkInstrumentationBlock);
+
+        auto exits = GetEveryExit(function);
+
+        std::vector<Value*> retVals;
+        for (auto exit : exits)
+        {
+            IRBuilder<> exitBuilder{exit};
+            ReturnInst* returnInst = dyn_cast<ReturnInst>(exit->getTerminator());
+            assert(returnInst != nullptr && returnInst->getReturnValue() != nullptr);
+
+            retVals.push_back(returnInst->getReturnValue());
+            exitBuilder.CreateBr(checkInstrumentationBlock);
+            returnInst->eraseFromParent();
+        }
+
+        auto returnValue = builder.CreatePHI(function->getReturnType(), exits.size(), "returnValue");
+        for (size_t i = 0; i < exits.size(); ++i)
+        {
+            returnValue->addIncoming(retVals[i], exits[i]);
+        }
+
+        BasicBlock* exitNormal = BasicBlock::Create(C, "exit_normal", function);
+        IRBuilder<> exitBuilder{exitNormal};
+        exitBuilder.CreateRet(returnValue);
+
+        BasicBlock* instrumentExitBlock = BasicBlock::Create(C, "instrumentation_return", function);
+
+        auto cond = builder.CreateICmpEQ(instrumentationActive, ConstantInt::get(IntegerType::get(C, 1), 1));
+        builder.CreateCondBr(cond, instrumentExitBlock, exitNormal);
+
+        builder.SetInsertPoint(instrumentExitBlock);
+
+        if (!event.returnValue.isConstant) // Runtime return value, constant/runtime parameters.
+        {
+            builder.CreateStore(builder.CreateCast(TeslaTypes::GetCastToInteger(returnValue->getType()), returnValue, TeslaTypes::GetMatchType(C)),
+                                builder.CreateGEP(phiMatchArray, TeslaTypes::GetInt(C, 32, event.GetMatchDataSize() - 1)));
+
+            Function* updateAutomaton = TeslaTypes::GetUpdateAutomaton(M);
+            builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event),
+                                                 builder.CreateBitCast(phiMatchArray, Type::getInt8PtrTy(C))});
+
+            builder.CreateRet(returnValue);
+        }
+        else
+        {
+            BasicBlock* exitInstrument = BasicBlock::Create(C, "instrumentation_return_match", function);
+
+            Value* cond = builder.CreateICmpEQ(builder.CreateCast(TeslaTypes::GetCastToInteger(returnValue->getType()), returnValue, TeslaTypes::GetMatchType(C)),
+                                               ConstantInt::get(TeslaTypes::GetMatchType(C), event.returnValue.constantValue));
+            builder.CreateCondBr(cond, exitInstrument, exitNormal);
+            builder.SetInsertPoint(exitInstrument);
+
+            if (event.GetMatchDataSize() > 0) // Constant return value, runtime paramenters.
+            {
+                Function* updateAutomaton = TeslaTypes::GetUpdateAutomaton(M);
+                builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event),
+                                                     builder.CreateBitCast(phiMatchArray, Type::getInt8PtrTy(C))});
+            }
+            else // Constant return value, constant parameters.
+            {
+                Function* updateAutomaton = TeslaTypes::GetUpdateAutomatonDeterministic(M);
+                builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event)});
+            }
+
+            builder.CreateRet(returnValue);
+        }
+    }
+
+  //  llvm::errs() << *function << "\n";
 }
 
 llvm::CallInst* ThinTeslaInstrumenter::GetTeslaAssertionInstr(llvm::Function* function, ThinTeslaAssertionSite& event)
@@ -303,20 +414,31 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
     }
 }
 
+std::vector<BasicBlock*> ThinTeslaInstrumenter::GetEveryExit(Function* function)
+{
+    std::vector<BasicBlock*> exits;
+    for (auto& block : *function)
+    {
+        if (block.getTerminator() != nullptr && dyn_cast<ReturnInst>(block.getTerminator()) != nullptr)
+        {
+            exits.push_back(&block);
+        }
+    }
+
+    return exits;
+}
+
 void ThinTeslaInstrumenter::InstrumentEveryExit(llvm::Module& M, Function* function, ThinTeslaAssertion& assertion, ThinTeslaFunction& event)
 {
     GlobalVariable* global = GetEventGlobal(M, assertion, event);
 
     Function* endAutomaton = TeslaTypes::GetEndAutomaton(M);
 
-    for (auto& block : *function)
+    auto exits = GetEveryExit(function);
+    for (auto exit : exits)
     {
-        //  llvm::errs() << "Terminator: " << *block.getTerminator() << "\n";
-        if (dyn_cast<ReturnInst>(block.getTerminator()) != nullptr)
-        {
-            IRBuilder<> builder(block.getTerminator());
-            builder.CreateCall(endAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event)});
-        }
+        IRBuilder<> builder(exit->getTerminator());
+        builder.CreateCall(endAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event)});
     }
 }
 
@@ -393,7 +515,8 @@ GlobalVariable* ThinTeslaInstrumenter::GetEventGlobal(llvm::Module& M, ThinTesla
         matchArray = ConstantExpr::getBitCast(matchArrayGlobal, Int8PtrTy);
     }
 
-    Constant* state = ConstantStruct::get(TeslaTypes::EventStateTy, ConstantPointerNull::get(Int8PtrTy), matchArray);
+    Constant* state = ConstantStruct::get(TeslaTypes::EventStateTy, ConstantPointerNull::get(Int8PtrTy), matchArray,
+                                          TeslaTypes::GetInt(C, 8, matchDataSize));
 
     Constant* init = ConstantStruct::get(TeslaTypes::EventTy, eventsArrayPtr, cFlags,
                                          TeslaTypes::GetSizeT(C, event.successors.size()), TeslaTypes::GetSizeT(C, event.id), state);

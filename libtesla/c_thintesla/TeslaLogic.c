@@ -32,8 +32,9 @@ void StartAutomaton(TeslaAutomaton* automaton)
     automaton->state.isCorrect = true;
 }
 
-void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data, size_t dataSize)
+void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data)
 {
+    size_t dataSize = event->state.matchDataSize;
     if (!event->flags.isDeterministic)
     {
         if (event->state.store == NULL || event->state.store->type == TESLA_STORE_INVALID)

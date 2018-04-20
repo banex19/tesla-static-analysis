@@ -172,7 +172,6 @@ void ThinTeslaAssertion::AddArgumentToParametricEvent(std::shared_ptr<ThinTeslaP
     {
         if (!returnValue)
             event->numTotalParams++;
-            
         return;
     }
 
