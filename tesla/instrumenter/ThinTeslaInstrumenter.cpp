@@ -341,6 +341,11 @@ void ThinTeslaInstrumenter::UpdateEventsWithParameters(llvm::Module& M, ThinTesl
             Value* var = GetVariable(function, param.varName);
             assert(var != nullptr && "Variable to match assertion has been optimized away by the compiler!");
 
+            if (dyn_cast<AllocaInst>(var) != nullptr)
+            {
+                var = builder.CreateLoad(var);
+            }
+            
             builder.CreateStore(builder.CreateCast(TeslaTypes::GetCastToInteger(var->getType()), var, TeslaTypes::GetMatchType(C)),
                                 builder.CreateGEP(builder.CreateBitCast(matchArray, TeslaTypes::GetMatchType(C)->getPointerTo()),
                                                   TeslaTypes::GetInt(C, 32, i)));

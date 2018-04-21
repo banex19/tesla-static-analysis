@@ -17,6 +17,12 @@ void TeslaHT_Destroy(TeslaHT* hashtable)
     TeslaFree(hashtable->table);
 }
 
+void TeslaHT_Clear(TeslaHT* hashtable)
+{
+    memset(hashtable->table, 0, TeslaHT_GetTableSize(hashtable));
+    hashtable->size = 0;
+}
+
 bool TeslaHT_ResizeTable(TeslaHT* hashtable, size_t newCapacity)
 {
     DEBUG_ASSERT(newCapacity > hashtable->capacity);
@@ -61,7 +67,13 @@ void TeslaHT_HashToNewTable(TeslaHT* hashtable, size_t oldCapacity, uint8_t* old
 
 bool TeslaHT_Insert(TeslaHT* hashtable, uint64_t tag, void* data)
 {
-    return TeslaHT_InsertInternal(hashtable, tag, data, true);
+    BucketHeader* existing = TeslaHT_LookupTagPtr(hashtable, data);
+
+    if (existing == NULL)
+        return TeslaHT_InsertInternal(hashtable, tag, data, true);
+
+    existing->tag |= tag;
+    return true;
 }
 
 bool TeslaHT_InsertInternal(TeslaHT* hashtable, uint64_t tag, void* data, bool allowResizing)
@@ -102,7 +114,16 @@ bool TeslaHT_InsertInternal(TeslaHT* hashtable, uint64_t tag, void* data, bool a
 
 uint64_t TeslaHT_LookupTag(TeslaHT* hashtable, void* data)
 {
-    uint64_t outTag = 0;
+    BucketHeader* header = TeslaHT_LookupTagPtr(hashtable, data);
+    if (header != NULL)
+        return header->tag;
+
+    return 0;
+}
+
+BucketHeader* TeslaHT_LookupTagPtr(TeslaHT* hashtable, void* data)
+{
+    BucketHeader* outTag = NULL;
 
     auto hash = Hash64(data, hashtable->dataSize);
 
@@ -116,7 +137,7 @@ uint64_t TeslaHT_LookupTag(TeslaHT* hashtable, void* data)
     {
         if (memcmp(data, bucket + TeslaHT_GetHeaderSize(), hashtable->dataSize) == 0)
         {
-            outTag = header->tag;
+            outTag = header;
             break;
         }
         else

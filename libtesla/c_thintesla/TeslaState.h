@@ -2,6 +2,7 @@
 
 #include "TeslaStore.h"
 #include "ThinTesla.h"
+#include "TeslaTypes.h"
 
 //#define TESLA_PACK_STRUCTS
 #ifdef TESLA_PACK_STRUCTS
@@ -21,10 +22,12 @@ typedef struct TeslaEventFlags
 
 typedef struct TeslaEventState
 {
-    TeslaStore* store;
+    TeslaStore* store; // This pointer will be cannibalized to store the temporal tag for deterministic events.
     uint8_t* matchData;
     uint8_t matchDataSize;
 } TeslaEventState;
+
+_Static_assert(sizeof(TeslaStore*) >= sizeof(TeslaTemporalTag), "Tesla temporal tag too large to fit in pointer");
 
 typedef struct TeslaEvent
 {
@@ -43,7 +46,7 @@ typedef struct TeslaAutomatonFlags
 
 typedef struct TeslaAutomatonState
 {
-    size_t currentTemporalTag;
+    TeslaTemporalTag currentTemporalTag;
     TeslaEvent* currentEvent;
     TeslaEvent* lastEvent;
     bool isCorrect;

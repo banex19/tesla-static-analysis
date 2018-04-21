@@ -24,6 +24,7 @@ typedef struct TeslaStore
 
 bool TeslaStore_Create(StoreType type, size_t initialCapacity, size_t dataSize, TeslaStore* store);
 void TeslaStore_Destroy(TeslaStore* store);
+void TeslaStore_Clear(TeslaStore* store);
 
 bool TeslaStore_Insert(TeslaStore* store, TeslaTemporalTag tag, void* data);
 TeslaTemporalTag TeslaStore_Get(TeslaStore* store, void* data);

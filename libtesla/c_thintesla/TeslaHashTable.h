@@ -5,9 +5,9 @@
 
 struct BucketHeader
 {
-    uint64_t full : 1;
     uint64_t tag : 63;
-} __attribute__((packed));
+    uint64_t full : 1;
+} __attribute__ ((packed));
 
 typedef struct BucketHeader BucketHeader;
 
@@ -23,10 +23,12 @@ typedef struct TeslaHashTable
 
 bool TeslaHT_Create(size_t initialCapacity, size_t dataSize, TeslaHT* hashtable);
 void TeslaHT_Destroy(TeslaHT* hashtable);
+void TeslaHT_Clear(TeslaHT* hashtable);
 
 bool TeslaHT_Insert(TeslaHT* hashtable, uint64_t tag, void* data);
 bool TeslaHT_InsertInternal(TeslaHT* hashtable, uint64_t tag, void* data, bool allowResizing);
 uint64_t TeslaHT_LookupTag(TeslaHT* hashtable, void* data);
+BucketHeader* TeslaHT_LookupTagPtr(TeslaHT* hashtable, void* data);
 
 size_t TeslaHT_GetHeaderSize();
 size_t TeslaHT_GetTableSize(TeslaHT* hashtable);

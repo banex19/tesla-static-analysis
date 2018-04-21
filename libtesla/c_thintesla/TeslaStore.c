@@ -40,6 +40,18 @@ void TeslaStore_Destroy(TeslaStore* store)
     store->type = TESLA_STORE_INVALID;
 }
 
+void TeslaStore_Clear(TeslaStore* store)
+{
+    if (store->type == TESLA_STORE_HT)
+    {
+        TeslaHT_Clear(&store->store.hashtable);
+    }
+    else if (store->type == TESLA_STORE_SINGLE)
+    {
+        memset(store->store.data, 0, store->dataSize);
+    }
+}
+
 bool TeslaStore_Insert(TeslaStore* store, TeslaTemporalTag tag, void* data)
 {
     if (store->type == TESLA_STORE_HT)
