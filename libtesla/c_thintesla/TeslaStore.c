@@ -67,6 +67,8 @@ bool TeslaStore_Insert(TeslaStore* store, TeslaTemporalTag tag, void* data)
         return true;
     }
 
+    printf("Type: %d\n", store->type);
+
     assert(false);
     return false;
 }

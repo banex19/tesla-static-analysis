@@ -28,10 +28,16 @@ void ThinTeslaAssertion::BuildAssertion()
 
 void ThinTeslaAssertion::LinkEvents()
 {
+    bool beforeAssertion = true;
     for (size_t i = 0; i < events.size() - 1; ++i)
     {
         auto event = events[i];
         auto next = events[i + 1];
+
+        if (event->IsAssertion())
+            beforeAssertion = false;
+
+        event->isBeforeAssertion = beforeAssertion;
 
         if (next->isOR)
         {

@@ -10,12 +10,16 @@ void TA_Reset(TeslaAutomaton* automaton)
         {
             TeslaEvent* event = automaton->events[i];
 
+            if (event->flags.isDeterministic)
+                continue;
+
             if (event->state.store != NULL)
+            {
                 TeslaStore_Destroy(event->state.store);
 
-            TeslaFree(event->state.store);
-
-            memset(event->state.matchData, 0, sizeof(size_t) * event->state.matchDataSize);
+                //   TeslaFree(event->state.store);
+                //   event->state.store = NULL;
+            }
         }
     }
 }

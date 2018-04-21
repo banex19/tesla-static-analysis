@@ -79,10 +79,10 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
 {
     Function* function = M.getFunction(event.functionName);
 
-    auto& C = M.getContext();
-
-    if (function->isDeclaration())
+    if (function == nullptr || function->isDeclaration())
         return;
+
+    auto& C = M.getContext();
 
     BasicBlock* originalEntry = &function->getEntryBlock();
     BasicBlock* instrumentBlock = nullptr;
@@ -151,7 +151,7 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
             constParams.push_back(param);
     }
 
-    BasicBlock* disableInstrumentationBlock = BasicBlock::Create(C, "no_instrumentation", function, instrumentBlock);
+    BasicBlock* disableInstrumentationBlock = BasicBlock::Create(C, "no_instrumentation", function);
     IRBuilder<> builder{disableInstrumentationBlock};
     builder.CreateBr(originalEntry);
 
@@ -262,7 +262,7 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
         }
     }
 
-  //  llvm::errs() << *function << "\n";
+    //   llvm::errs() << *function << "\n";
 }
 
 llvm::CallInst* ThinTeslaInstrumenter::GetTeslaAssertionInstr(llvm::Function* function, ThinTeslaAssertionSite& event)
@@ -293,13 +293,70 @@ llvm::CallInst* ThinTeslaInstrumenter::GetTeslaAssertionInstr(llvm::Function* fu
     return nullptr;
 }
 
+llvm::Value* ThinTeslaInstrumenter::GetVariable(llvm::Function* function, const std::string& varName)
+{
+    for (auto& arg : function->args())
+    {
+        if (arg.getName() == varName)
+            return &arg;
+    }
+
+    for (auto& instr : function->getEntryBlock())
+    {
+        if (instr.getName() == varName)
+            return &instr;
+    }
+
+    return nullptr;
+}
+
+void ThinTeslaInstrumenter::UpdateEventsWithParameters(llvm::Module& M, ThinTeslaAssertion& assertion, llvm::Instruction* insertPoint)
+{
+    Function* function = insertPoint->getParent()->getParent();
+
+    IRBuilder<> builder(insertPoint);
+
+    LLVMContext& C = M.getContext();
+
+    for (auto event : assertion.events)
+    {
+        if (event->isDeterministic || event->GetMatchDataSize() == 0)
+            continue;
+
+        auto eventGlobal = GetEventGlobal(M, assertion, *event);
+        auto matchArray = GetEventMatchArray(M, assertion, *event);
+
+        auto params = event->GetParameters();
+        auto retVal = event->GetReturnValue();
+        if (retVal.exists && !retVal.isConstant)
+            params.push_back(retVal);
+
+        size_t i = 0;
+
+        for (auto& param : params)
+        {
+            if (param.isConstant)
+                continue;
+
+            Value* var = GetVariable(function, param.varName);
+            assert(var != nullptr && "Variable to match assertion has been optimized away by the compiler!");
+
+            builder.CreateStore(builder.CreateCast(TeslaTypes::GetCastToInteger(var->getType()), var, TeslaTypes::GetMatchType(C)),
+                                builder.CreateGEP(builder.CreateBitCast(matchArray, TeslaTypes::GetMatchType(C)->getPointerTo()),
+                                                  TeslaTypes::GetInt(C, 32, i)));
+
+            ++i;
+        }
+    }
+}
+
 void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaAssertionSite& event)
 {
     Function* function = M.getFunction(event.functionName);
 
     Function* updateAutomaton = TeslaTypes::GetUpdateAutomatonDeterministic(M);
 
-    if (!function->isDeclaration())
+    if (function != nullptr && !function->isDeclaration())
     {
         assert(!event.IsInstrumented());
         assert(event.isDeterministic);
@@ -309,6 +366,11 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
         if (callInst == nullptr)
             llvm::errs() << *function << "\n";
         assert(callInst != nullptr);
+
+        if (!assertion.isDeterministic)
+        {
+            UpdateEventsWithParameters(M, assertion, callInst);
+        }
 
         IRBuilder<> builder(callInst);
         builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event)});
@@ -369,7 +431,7 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
 {
     Function* function = M.getFunction(event.functionName);
 
-    if (!function->isDeclaration() && event.calleeInstrumentation)
+    if (function != nullptr && !function->isDeclaration() && event.calleeInstrumentation)
     {
         assert(!event.IsInstrumented());
 
@@ -402,7 +464,7 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
                     for (auto& instr : block)
                     {
                         CallInst* callInst = dyn_cast<CallInst>(&instr);
-                        if (callInst != nullptr && callInst->getCalledFunction() == function)
+                        if (callInst != nullptr && callInst->getCalledFunction()->getName() == event.functionName)
                         {
                             IRBuilder<> builder(callInst);
                             InstrumentInstruction(M, callInst, assertion, event);
@@ -462,7 +524,7 @@ GlobalVariable* ThinTeslaInstrumenter::GetEventsArray(llvm::Module& M, ThinTesla
     ArrayType* eventsArrayTy = ArrayType::get(TeslaTypes::EventTy->getPointerTo(), assertion.events.size());
     Constant* eventsArray = ConstantArray::get(eventsArrayTy, events);
 
-    GlobalVariable* var = new GlobalVariable(M, eventsArrayTy, true, GlobalValue::ExternalLinkage, eventsArray, autID);
+    GlobalVariable* var = new GlobalVariable(M, eventsArrayTy, true, GlobalValue::WeakAnyLinkage, eventsArray, autID);
 
     return var;
 }
@@ -490,7 +552,7 @@ GlobalVariable* ThinTeslaInstrumenter::GetEventGlobal(llvm::Module& M, ThinTesla
 
         ArrayType* eventsArrayTy = ArrayType::get(TeslaTypes::EventTy->getPointerTo(), successors.size());
         Constant* eventsArray = ConstantArray::get(eventsArrayTy, successors);
-        GlobalVariable* eventsArrayGlobal = new GlobalVariable(M, eventsArrayTy, true, GlobalValue::ExternalLinkage, eventsArray, eventID + "_succ");
+        GlobalVariable* eventsArrayGlobal = new GlobalVariable(M, eventsArrayTy, true, GlobalValue::WeakAnyLinkage, eventsArray, eventID + "_succ");
         eventsArrayPtr = ConstantExpr::getBitCast(eventsArrayGlobal, VoidPtrPtrTy);
     }
 
@@ -498,6 +560,8 @@ GlobalVariable* ThinTeslaInstrumenter::GetEventGlobal(llvm::Module& M, ThinTesla
     flags.isOR = event.isOR;
     flags.isOptional = event.isOptional;
     flags.isDeterministic = event.isDeterministic;
+    flags.isAssertion = event.IsAssertion();
+    flags.isBeforeAssertion = event.isBeforeAssertion;
     flags.isEnd = event.successors.size() == 0;
     Constant* cFlags = ConstantStruct::get(TeslaTypes::EventFlagsTy, TeslaTypes::GetInt(C, 8, *(uint8_t*)(&flags)));
 
@@ -506,11 +570,7 @@ GlobalVariable* ThinTeslaInstrumenter::GetEventGlobal(llvm::Module& M, ThinTesla
     size_t matchDataSize = event.GetMatchDataSize();
     if (matchDataSize > 0)
     {
-        ArrayType* matchArrayTy = ArrayType::get(TeslaTypes::GetMatchType(C), matchDataSize);
-        Constant* matchArray = ConstantArray::get(matchArrayTy, TeslaTypes::GetMatchValue(C, 0));
-        GlobalVariable* matchArrayGlobal = new GlobalVariable(M, matchArrayTy, true, GlobalValue::ExternalLinkage, matchArray, eventID + "_match");
-
-        matchArrayGlobal->setConstant(false); // This array will be populated at runtime.
+        GlobalVariable* matchArrayGlobal = GetEventMatchArray(M, assertion, event);
 
         matchArray = ConstantExpr::getBitCast(matchArrayGlobal, Int8PtrTy);
     }
@@ -522,11 +582,29 @@ GlobalVariable* ThinTeslaInstrumenter::GetEventGlobal(llvm::Module& M, ThinTesla
                                          TeslaTypes::GetSizeT(C, event.successors.size()), TeslaTypes::GetSizeT(C, event.id), state);
 
     GlobalVariable* var = new GlobalVariable(M, TeslaTypes::EventTy, true,
-                                             GlobalValue::ExternalLinkage, init, eventID);
+                                             GlobalValue::WeakAnyLinkage, init, eventID);
 
     var->setConstant(false); // This variable will be manipulated by libtesla.
 
     return var;
+}
+
+GlobalVariable* ThinTeslaInstrumenter::GetEventMatchArray(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaEvent& event)
+{
+    std::string id = GetEventID(assertion, event) + "_match";
+    GlobalVariable* old = M.getGlobalVariable(id);
+    if (old != nullptr)
+        return old;
+
+    LLVMContext& C = M.getContext();
+
+    ArrayType* matchArrayTy = ArrayType::get(TeslaTypes::GetMatchType(C), event.GetMatchDataSize());
+    Constant* matchArray = ConstantArray::get(matchArrayTy, TeslaTypes::GetMatchValue(C, 0));
+    GlobalVariable* matchArrayGlobal = new GlobalVariable(M, matchArrayTy, true, GlobalValue::WeakAnyLinkage, matchArray, id);
+
+    matchArrayGlobal->setConstant(false); // This array will be populated at runtime.
+
+    return matchArrayGlobal;
 }
 
 GlobalVariable* ThinTeslaInstrumenter::GetAutomatonGlobal(llvm::Module& M, ThinTeslaAssertion& assertion)
@@ -552,6 +630,7 @@ GlobalVariable* ThinTeslaInstrumenter::GetAutomatonGlobal(llvm::Module& M, ThinT
                                           ConstantPointerNull::get(TeslaTypes::EventTy->getPointerTo()),
                                           ConstantPointerNull::get(TeslaTypes::EventTy->getPointerTo()),
                                           TeslaTypes::GetInt(C, 8, 0),
+                                          TeslaTypes::GetInt(C, 8, 0),
                                           TeslaTypes::GetInt(C, 8, 0));
 
     Constant* init = ConstantStruct::get(TeslaTypes::AutomatonTy, eventsArrayPtr, cFlags,
@@ -560,7 +639,7 @@ GlobalVariable* ThinTeslaInstrumenter::GetAutomatonGlobal(llvm::Module& M, ThinT
                                          state);
 
     GlobalVariable* var = new GlobalVariable(M, TeslaTypes::AutomatonTy, true,
-                                             GlobalValue::ExternalLinkage, init, autID);
+                                             GlobalValue::WeakAnyLinkage, init, autID);
 
     var->setConstant(false);
 
@@ -578,7 +657,7 @@ GlobalVariable* ThinTeslaInstrumenter::GetStringGlobal(llvm::Module& M, const st
 
     Constant* strConst = ConstantDataArray::getString(M.getContext(), str);
     GlobalVariable* var = new GlobalVariable(M, strConst->getType(), true,
-                                             GlobalValue::ExternalLinkage, strConst, globalID);
+                                             GlobalValue::WeakAnyLinkage, strConst, globalID);
 
     return var; // This variable will be manipulated by libtesla.
 }

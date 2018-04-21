@@ -22,6 +22,31 @@ class ThinTeslaFunction;
 class ThinTeslaParametricFunction;
 class ThinTeslaAssertionSite;
 
+struct ThinTeslaParameter
+{
+    ThinTeslaParameter()
+    {
+    }
+
+    ThinTeslaParameter(size_t index, size_t constantValue)
+        : exists(true), isConstant(true), constantValue(constantValue), index(index)
+    {
+    }
+
+    ThinTeslaParameter(size_t index, const std::string& varName)
+        : exists(true), isConstant(false), varName(varName), index(index)
+    {
+    }
+
+    bool isConstant = false;
+    size_t constantValue = 0;
+    std::string varName = "";
+
+    bool exists = false;
+
+    size_t index = 0;
+};
+
 class ThinTeslaEventVisitor
 {
   public:
@@ -49,6 +74,7 @@ class ThinTeslaEvent
     bool isOptional = false;
     bool isOR = false;
     bool isDeterministic = true;
+    bool isBeforeAssertion = false;
 
     bool IsInstrumented() { return alreadyInstrumented; }
     void SetInstrumented() { alreadyInstrumented = true; }
@@ -56,7 +82,11 @@ class ThinTeslaEvent
     bool IsEnd() { return successors.size() == 0; }
     bool IsStart() { return id == 0; }
 
+    virtual bool IsAssertion() { return false; }
+
     virtual size_t GetMatchDataSize() { return 0; }
+    virtual std::vector<ThinTeslaParameter> GetParameters() { return {}; }
+    virtual ThinTeslaParameter GetReturnValue() { return ThinTeslaParameter(); }
 
     size_t id = 0;
     std::vector<std::shared_ptr<ThinTeslaEvent>> successors;
@@ -91,36 +121,13 @@ class ThinTeslaAssertionSite : public ThinTeslaFunction
     {
     }
 
+    bool IsAssertion() { return true; }
+
     VISITOR_ACCEPT
 
     std::string filename;
     size_t line;
     size_t counter;
-};
-
-struct ThinTeslaParameter
-{
-    ThinTeslaParameter()
-    {
-    }
-
-    ThinTeslaParameter(size_t index, size_t constantValue)
-        : exists(true), isConstant(true), constantValue(constantValue), index(index)
-    {
-    }
-
-    ThinTeslaParameter(size_t index, const std::string& varName)
-        : exists(true), isConstant(false), constantValue(constantValue), index(index)
-    {
-    }
-
-    bool isConstant = false;
-    size_t constantValue = 0;
-    std::string varName = "";
-
-    bool exists = false;
-
-    size_t index = 0;
 };
 
 class ThinTeslaParametricFunction : public ThinTeslaFunction
@@ -158,9 +165,12 @@ class ThinTeslaParametricFunction : public ThinTeslaFunction
 
         if (returnValue.exists && !returnValue.isConstant)
             size++;
-            
+
         return size;
     }
+
+    std::vector<ThinTeslaParameter> GetParameters() { return params; };
+    ThinTeslaParameter GetReturnValue() { return returnValue; };
 
     std::vector<ThinTeslaParameter> params;
     ThinTeslaParameter returnValue;
@@ -194,12 +204,17 @@ class ThinTeslaAssertion
 
     void DetermineProperties()
     {
+        bool beforeAssertion = true;
         for (auto event : events)
         {
+            if (event->IsAssertion())
+                beforeAssertion = false;
+
+            event->isBeforeAssertion = beforeAssertion;
+
             if (!event->isDeterministic)
             {
                 isDeterministic = false;
-                break;
             }
         }
     }
@@ -229,74 +244,3 @@ class ThinTeslaAssertion
 
     bool isOR = false;
 };
-
-/*
-class AutomatonParser
-{
-  public:
-    static std::string GetStringIdentifier(const AutomatonDescription& desc, const std::string& customFilename = "")
-    {
-        return GetStringIdentifierFromIdentifier(desc.identifier(), customFilename);
-    }
-
-    static std::string GetStringIdentifier(const Usage& usage, const std::string& customFilename = "")
-    {
-        return GetStringIdentifierFromIdentifier(usage.identifier(), customFilename);
-    }
-
-    static std::set<std::string> GetAffectedFunctions(const AutomatonDescription& desc)
-    {
-        std::vector<const Expression*> exps;
-        exps.push_back(&desc.expression());
-
-        return ParseExpressionTree(exps);
-    }
-
-    static std::set<std::string> GetAffectedFunctions(const Usage& usage)
-    {
-        std::vector<const Expression*> exps;
-        exps.push_back(&usage.beginning());
-        exps.push_back(&usage.end());
-
-        return ParseExpressionTree(exps);
-    }
-
-  private:
-    static std::string GetStringIdentifierFromIdentifier(const Identifier& id, const std::string& customFilename)
-    {
-        std::string filename = customFilename == "" ? id.location().filename() : customFilename;
-        return filename + "$" + std::to_string(id.location().line()) + "$" + std::to_string(id.location().counter());
-    }
-
-    static std::set<std::string> ParseExpressionTree(std::vector<const Expression*> exps)
-    {
-        std::set<std::string> affectedFunctions;
-
-        while (exps.size() > 0)
-        {
-            const tesla::Expression* exp = exps.back();
-            exps.pop_back();
-
-            if (exp->type() == tesla::Expression_Type_BOOLEAN_EXPR)
-            {
-                for (const auto& subExps : exp->booleanexpr().expression())
-                {
-                    exps.push_back(&subExps);
-                }
-            }
-            else if (exp->type() == tesla::Expression_Type_SEQUENCE)
-            {
-                for (const auto& subExps : exp->sequence().expression())
-                {
-                    exps.push_back(&subExps);
-                }
-            }
-            else if (exp->type() == tesla::Expression_Type_FUNCTION)
-            {
-                affectedFunctions.insert(exp->function().function().name());
-            }
-        }
-
-        return affectedFunctions;
-    }
-}; */

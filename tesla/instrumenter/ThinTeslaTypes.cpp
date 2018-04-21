@@ -76,7 +76,7 @@ void TeslaTypes::PopulateAutomatonTy(Module& M)
     PointerType* EventPtrTy = PointerType::getUnqual(EventTy);
 
     AutomatonFlagsTy = GetStructType("TeslaAutomatonFlags", {Int8Ty}, M, TESLA_STRUCTS_PACKED);
-    AutomatonStateTy = GetStructType("TeslaAutomatonState", {SizeTTy, EventPtrTy, EventPtrTy, BoolTy, BoolTy}, M, TESLA_STRUCTS_PACKED);
+    AutomatonStateTy = GetStructType("TeslaAutomatonState", {SizeTTy, EventPtrTy, EventPtrTy, BoolTy, BoolTy, BoolTy}, M, TESLA_STRUCTS_PACKED);
     AutomatonTy = GetStructType("TeslaAutomaton", {VoidPtrPtrTy, AutomatonFlagsTy, SizeTTy, VoidPtrTy, AutomatonStateTy}, M, TESLA_STRUCTS_PACKED);
 }
 

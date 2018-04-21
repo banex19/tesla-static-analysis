@@ -13,6 +13,25 @@
         (byte & 0x02 ? '1' : '0'), \
         (byte & 0x01 ? '1' : '0')
 
+const size_t NO_SUCC = SIZE_MAX;
+
+size_t GetSuccessor(TeslaEvent* event, TeslaEvent* successor)
+{
+    if (successor->id < event->id)
+        return NO_SUCC;
+
+    for (size_t i = 0; i < event->numSuccessors; ++i)
+    {
+        if (event->successors[i] == successor)
+            return i;
+    }
+
+    return NO_SUCC;
+}
+
+
+//#define PRINT_TRANSITIONS
+
 void StartAutomaton(TeslaAutomaton* automaton)
 {
     DEBUG_ASSERT(automaton != NULL);
@@ -30,59 +49,112 @@ void StartAutomaton(TeslaAutomaton* automaton)
     // We assume that this automaton will return a correct response for now.
     // This can change whenever, for example, an allocation fails.
     automaton->state.isCorrect = true;
-}
 
-void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data)
-{
-    size_t dataSize = event->state.matchDataSize;
-    if (!event->flags.isDeterministic)
+    if (!automaton->flags.isDeterministic)
     {
-        if (event->state.store == NULL || event->state.store->type == TESLA_STORE_INVALID)
+        bool allCorrect = true;
+
+        for (size_t i = 0; i < automaton->numEvents; ++i)
         {
-            event->state.store = TeslaMalloc(sizeof(TeslaStore));
+            TeslaEvent* event = automaton->events[i];
+
+            if (event->flags.isDeterministic)
+                continue;
+
+            size_t dataSize = event->state.matchDataSize;
+
+            // Try to allocate space for the store data structure.
             if (event->state.store == NULL)
             {
-                automaton->state.isCorrect = false;
+                event->state.store = TeslaMalloc(sizeof(TeslaStore));
+                if (event->state.store == NULL)
+                {
+                    allCorrect = false;
+                }
+                else
+                    event->state.store->type = TESLA_STORE_INVALID;
             }
-            else
+
+            // Try to construct the store.
+            if (event->state.store != NULL && event->state.store->type == TESLA_STORE_INVALID)
             {
                 if (!TeslaStore_Create(TESLA_STORE_HT, 10, dataSize, event->state.store))
                 {
                     event->state.store->type = TESLA_STORE_INVALID;
-                    automaton->state.isCorrect = false;
+                    allCorrect = false;
                 }
             }
         }
 
-        if (event->state.store != NULL && event->state.store->type != TESLA_STORE_INVALID)
-            TeslaStore_Insert(&event->state.store, automaton->state.currentTemporalTag, data);
+        automaton->state.isCorrect = allCorrect;
     }
-}
 
-const size_t NO_SUCC = SIZE_MAX;
-
-size_t GetSuccessor(TeslaEvent* event, TeslaEvent* successor)
-{
-    for (size_t i = 0; i < event->numSuccessors; ++i)
+    if (!automaton->state.isCorrect)
     {
-        if (event->successors[i] == successor)
-            return i;
+        TeslaWarning("Automaton may be incorrect");
     }
-
-    return NO_SUCC;
 }
 
-//#define PRINT_TRANSITIONS
+
+void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data)
+{
+#ifdef PRINT_TRANSITIONS
+    DebugAutomaton(automaton);
+    printf("Transitioning - from:\t");
+    DebugEvent(automaton->state.currentEvent);
+
+    printf("Encountered event:\t");
+    DebugEvent(event);
+    DebugMatchArray(event);
+#endif
+
+    if (!automaton->state.isActive)
+        return;
+
+
+
+    size_t succ = GetSuccessor(automaton->state.currentEvent, event);
+
+    TeslaEvent* current = automaton->state.currentEvent;
+    TeslaEvent* last = automaton->state.lastEvent;
+
+    if (succ != NO_SUCC)
+    {
+        automaton->state.currentEvent = event;
+    }
+    else if (event->id <= last->id)
+    {
+        automaton->state.currentTemporalTag <<= 1;
+    }
+
+    automaton->state.lastEvent = event;
+
+    if (event->state.store != NULL && event->state.store->type != TESLA_STORE_INVALID)
+        TeslaStore_Insert(event->state.store, automaton->state.currentTemporalTag, data);
+
+    if (event->id > current->id && succ == NO_SUCC)
+    {
+        automaton->state.currentTemporalTag <<= 1;
+    }
+
+#ifdef PRINT_TRANSITIONS
+    printf("Transitioning - to:\t");
+    DebugEvent(automaton->state.currentEvent);
+#endif
+}
 
 void UpdateAutomatonDeterministic(TeslaAutomaton* automaton, TeslaEvent* event)
 {
     bool triedAgain = false;
-
-//   DebugAutomaton(automaton);
+    bool foundSuccessor = false;
 
 #ifdef PRINT_TRANSITIONS
+    DebugAutomaton(automaton);
     printf("Transitioning - from:\t");
     DebugEvent(automaton->state.currentEvent);
+
+    printf("Encountered event:\t");
+    DebugEvent(event);
 #endif
 
     if (!automaton->state.isActive)
@@ -110,8 +182,6 @@ tryagain:
 
         DEBUG_ASSERT(current != NULL);
 
-        bool foundSuccessor = false;
-
         size_t succIndex = GetSuccessor(current, event);
         if (succIndex != NO_SUCC)
         {
@@ -121,7 +191,7 @@ tryagain:
 
         if (!foundSuccessor)
         {
-            // If both events are in the same OR block (whatever their relative order), this is fine.
+            // If both events are in the same OR block (regardless of their relative order), this is fine.
             if (current->flags.isOR && event->flags.isOR && GetSuccessor(event, current) != NO_SUCC)
                 foundSuccessor = true;
         }
@@ -144,33 +214,55 @@ tryagain:
     DebugEvent(automaton->state.currentEvent);
 #endif
 
-    if (automaton->state.currentEvent->flags.isEnd)
+    if (event->flags.isAssertion)
     {
-        TA_Reset(automaton);
-        automaton->state.isActive = true;
+        if (!foundSuccessor)
+        {
+            TeslaAssertionFail(automaton);
+        }
+
+        if (!automaton->flags.isDeterministic)
+            VerifyAutomaton(automaton);
+
+        automaton->state.reachedAssertion = true;
     }
+
+    // We're backtracking.
+    if (!automaton->flags.isDeterministic)
+    {
+        if (!foundSuccessor)
+            automaton->state.currentTemporalTag <<= 1;
+
+        automaton->state.lastEvent = automaton->state.currentEvent;
+    }
+}
+
+void VerifyAutomaton(TeslaAutomaton* automaton)
+{
 }
 
 void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event)
 {
-    DEBUG_ASSERT(automaton->state.isActive);
-    DEBUG_ASSERT(false);
-
-    UpdateAutomatonDeterministic(automaton, event);
-
-    // If this automaton is still active, the assertion failed.
-    if (automaton->state.currentEvent != NULL)
+    if (automaton->state.reachedAssertion) // Only check automata that were in the assertion path.
     {
-        TeslaAssertionFail(automaton);
+        DEBUG_ASSERT(automaton->state.isActive);
+
+        UpdateAutomatonDeterministic(automaton, event);
+
+        // If this automaton is not in an ending event, the assertion has failed.
+        if (!automaton->state.currentEvent->flags.isEnd)
+        {
+            TeslaAssertionFail(automaton);
+        }
     }
 
-    automaton->state.isActive = false;
+    TA_Reset(automaton);
 }
 
 void DebugEvent(TeslaEvent* event)
 {
 #ifndef _KERNEL
-    printf("Event %d - " BYTE_TO_BINARY_PATTERN " flags - %d successors\n", event->id,
+    printf("Event %d (%p) - " BYTE_TO_BINARY_PATTERN " flags - %d successors\n", event->id, event,
            BYTE_TO_BINARY(*((uint8_t*)&event->flags)), event->numSuccessors);
 #endif
 }
@@ -180,5 +272,18 @@ void DebugAutomaton(TeslaAutomaton* automaton)
 #ifndef _KERNEL
     printf("Automaton %s - %d events\n", automaton->name,
            automaton->numEvents);
+    for (size_t i = 0; i < automaton->numEvents; ++i)
+    {
+        DebugEvent(automaton->events[i]);
+    }
 #endif
+}
+
+void DebugMatchArray(TeslaEvent* event)
+{
+    size_t* data = event->state.matchData;
+    for (size_t i = 0; i < event->state.matchDataSize; ++i)
+    {
+        printf("Event %d (%p) - match[%d] = %lld\n", event->id, event, i, data[i]);
+    }
 }

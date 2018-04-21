@@ -4,3 +4,5 @@
 void TeslaAssertionFail(TeslaAutomaton* automaton);
 
 void TeslaPanic();
+
+void TeslaWarning(const char* warning);

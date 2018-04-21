@@ -1,5 +1,12 @@
 #include "TeslaAssert.h"
 
+void TeslaWarning(const char* warning)
+{
+#ifndef _KERNEL
+    fprintf(stderr, "TESLA WARNING - %s\n", warning);
+#endif
+}
+
 void TeslaAssertionFail(TeslaAutomaton* automaton)
 {
 #ifndef _KERNEL

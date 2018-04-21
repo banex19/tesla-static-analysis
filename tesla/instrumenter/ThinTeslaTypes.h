@@ -43,8 +43,10 @@ class TeslaTypes
         else if (type->isFloatingPointTy())
             return llvm::Instruction::CastOps::FPToSI;
         else
+        {
+            llvm::errs() << *type << "\n";
             assert(false && "Invalid type to cast to integer");
-
+        }
         return llvm::Instruction::CastOps::BitCast;
     }
 

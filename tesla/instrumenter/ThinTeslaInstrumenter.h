@@ -33,13 +33,16 @@ class ThinTeslaInstrumenter : public ThinTeslaEventVisitor, public llvm::ModuleP
     void InstrumentEvent(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaAssertionSite& event);
     void InstrumentEveryExit(llvm::Module& M, llvm::Function* function, ThinTeslaAssertion& assertion, ThinTeslaFunction& event);
     void InstrumentInstruction(llvm::Module& M, llvm::Instruction* instr, ThinTeslaAssertion& assertion, ThinTeslaFunction& event);
+    void UpdateEventsWithParameters(llvm::Module& M, ThinTeslaAssertion& assertion, llvm::Instruction* insertPoint);
 
     llvm::CallInst* GetTeslaAssertionInstr(llvm::Function* function, ThinTeslaAssertionSite& event);
     llvm::Instruction* GetFirstInstruction(llvm::Function* function);
     std::vector<llvm::Argument*> GetFunctionArguments(llvm::Function* function);
     std::vector<BasicBlock*> GetEveryExit(llvm::Function* function);
+    llvm::Value* GetVariable(llvm::Function* function, const std::string& varName);
 
     GlobalVariable* GetEventGlobal(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaEvent& event);
+    GlobalVariable* GetEventMatchArray(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaEvent& event);
     GlobalVariable* GetEventsArray(llvm::Module& M, ThinTeslaAssertion& assertion);
     GlobalVariable* GetAutomatonGlobal(llvm::Module& M, ThinTeslaAssertion& assertion);
     GlobalVariable* GetStringGlobal(llvm::Module& M, const std::string& str, const std::string& globalID);
