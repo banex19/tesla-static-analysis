@@ -25,6 +25,7 @@ void TeslaHT_Clear(TeslaHT* hashtable)
 
 bool TeslaHT_ResizeTable(TeslaHT* hashtable, size_t newCapacity)
 {
+
     DEBUG_ASSERT(newCapacity > hashtable->capacity);
 
     uint8_t* newTable = TeslaMalloc(hashtable->bucketSize * newCapacity);
@@ -67,13 +68,7 @@ void TeslaHT_HashToNewTable(TeslaHT* hashtable, size_t oldCapacity, uint8_t* old
 
 bool TeslaHT_Insert(TeslaHT* hashtable, uint64_t tag, void* data)
 {
-    BucketHeader* existing = TeslaHT_LookupTagPtr(hashtable, data);
-
-    if (existing == NULL)
-        return TeslaHT_InsertInternal(hashtable, tag, data, true);
-
-    existing->tag |= tag;
-    return true;
+    return TeslaHT_InsertInternal(hashtable, tag, data, true);
 }
 
 bool TeslaHT_InsertInternal(TeslaHT* hashtable, uint64_t tag, void* data, bool allowResizing)
@@ -94,9 +89,17 @@ bool TeslaHT_InsertInternal(TeslaHT* hashtable, uint64_t tag, void* data, bool a
 
     while (header->full)
     {
-        bucketIndex = (bucketIndex + 1) % hashtable->capacity;
-        bucket = TeslaHT_GetBucket(hashtable, bucketIndex);
-        header = (BucketHeader*)bucket;
+        if (memcmp(data, bucket + TeslaHT_GetHeaderSize(), hashtable->dataSize) == 0)
+        {
+            header->tag |= tag;
+            return true;
+        }
+        else
+        {
+            bucketIndex = (bucketIndex + 1) % hashtable->capacity;
+            bucket = TeslaHT_GetBucket(hashtable, bucketIndex);
+            header = (BucketHeader*)bucket;
+        }
     }
 
     header->full = 1;
@@ -123,8 +126,6 @@ uint64_t TeslaHT_LookupTag(TeslaHT* hashtable, void* data)
 
 BucketHeader* TeslaHT_LookupTagPtr(TeslaHT* hashtable, void* data)
 {
-    BucketHeader* outTag = NULL;
-
     auto hash = Hash64(data, hashtable->dataSize);
 
     size_t bucketIndex = hash % hashtable->capacity;
@@ -137,8 +138,7 @@ BucketHeader* TeslaHT_LookupTagPtr(TeslaHT* hashtable, void* data)
     {
         if (memcmp(data, bucket + TeslaHT_GetHeaderSize(), hashtable->dataSize) == 0)
         {
-            outTag = header;
-            break;
+            return header;
         }
         else
         {
@@ -148,7 +148,7 @@ BucketHeader* TeslaHT_LookupTagPtr(TeslaHT* hashtable, void* data)
         }
     }
 
-    return outTag;
+    return NULL;
 }
 
 uint8_t* TeslaHT_GetBucket(TeslaHT* hashtable, size_t index)

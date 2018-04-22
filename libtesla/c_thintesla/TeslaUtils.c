@@ -1,5 +1,5 @@
-#include "TeslaTypes.h"
 #include "TeslaUtils.h"
+#include "TeslaTypes.h"
 
 /* The caller must check for zero first */
 uint64_t FirstZero(uint64_t x)

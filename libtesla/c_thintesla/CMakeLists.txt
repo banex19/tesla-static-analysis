@@ -18,6 +18,12 @@ add_library(cthintesla SHARED
     MurmurHash3.c
 )
 
+# Enable LTO.
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto")
+
+# For 'perf'.
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ggdb")
+
 target_link_libraries(cthintesla ${CMAKE_THREAD_LIBS_INIT})
 
 

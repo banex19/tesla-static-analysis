@@ -13,6 +13,8 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wold-style-definition")
 # For some reason, shared libs on zenith aren't always build with -fPIC...
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
 
+
+
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_DEBUG")
 endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
