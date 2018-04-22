@@ -113,6 +113,13 @@ void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data)
     if (!automaton->state.isActive)
         return;
 
+    if (!event->flags.isBeforeAssertion) // We've already reached the assertion, we have more information now.
+    {
+        if (memcmp(data, event->state.matchData, event->state.matchDataSize * sizeof(size_t)) == 0)
+            UpdateAutomatonDeterministic(automaton, event);
+        return;
+    }
+
     size_t succ = GetSuccessor(automaton->state.currentEvent, event);
 
     TeslaEvent* current = automaton->state.currentEvent;
