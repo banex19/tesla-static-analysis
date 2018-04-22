@@ -19,15 +19,10 @@ add_llvm_loadable_module(LLVMTesla
   ThinTeslaInstrumenter.cpp
   ThinTeslaAssertion.cpp
 
-  StaticPass.cpp
   ManifestPass.cpp
-  CheckResult.cpp
   InlineAllPass.cpp
   StubFunctionsPass.cpp
   TraceFinder.cpp
-  ModelChecker.cpp
-  Z3Solver.cpp
-  Z3Pass.cpp
 
   PLUGIN_TOOL
   opt
@@ -35,7 +30,6 @@ add_llvm_loadable_module(LLVMTesla
 
 target_link_libraries(LLVMTesla
   TeslaCommon
-  z3
 )
 
 include_directories("${CMAKE_SOURCE_DIR}/../include")
