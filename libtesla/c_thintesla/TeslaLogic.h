@@ -6,7 +6,7 @@
 void StartAutomaton(TeslaAutomaton* automaton);
 void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data);
 void UpdateAutomatonDeterministic(TeslaAutomaton* automaton, TeslaEvent* event);
-void VerifyAutomaton(TeslaAutomaton* automaton);
+void VerifyAutomaton(TeslaAutomaton* automaton, bool verifyAllEvents);
 void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event);
 
 size_t GetSuccessor(TeslaEvent* event, TeslaEvent* successor);

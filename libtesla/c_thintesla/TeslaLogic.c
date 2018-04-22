@@ -246,7 +246,7 @@ tryagain:
         }
 
         if (!automaton->flags.isDeterministic)
-            VerifyAutomaton(automaton);
+            VerifyAutomaton(automaton, false);
 
         automaton->state.reachedAssertion = true;
     }
@@ -305,7 +305,7 @@ void VerifyORBlock(TeslaAutomaton* automaton, int* i, TeslaTemporalTag* lowerBou
     }
 }
 
-void VerifyAutomaton(TeslaAutomaton* automaton)
+void VerifyAutomaton(TeslaAutomaton* automaton, bool verifyAllEvents)
 {
     TeslaTemporalTag upperBound = INVALID_TAG;
     TeslaTemporalTag lowerBound = INVALID_TAG;
@@ -314,7 +314,7 @@ void VerifyAutomaton(TeslaAutomaton* automaton)
     {
         TeslaEvent* event = automaton->events[i];
 
-        if (event->flags.isAssertion)
+        if (!verifyAllEvents && event->flags.isAssertion)
             break;
 
         if (!event->flags.isDeterministic && (event->state.store == NULL || event->state.store->type == TESLA_STORE_INVALID))
