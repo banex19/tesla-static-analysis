@@ -8,8 +8,11 @@
 #include <stdio.h>
 
 #ifndef __cplusplus
+#pragma pack(1)
 typedef size_t uint64_t;
-typedef enum { false, true } bool;
+typedef enum   { false, true }  bool ;
+_Static_assert(sizeof(bool) == 4, "Bool enum not int");
+#pragma options align = reset
 #endif
 
 #ifdef __cplusplus

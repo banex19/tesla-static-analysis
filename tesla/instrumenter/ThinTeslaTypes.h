@@ -34,6 +34,15 @@ class TeslaTypes
         return ConstantInt::get(GetMatchType(C), val);
     }
 
+    static IntegerType* GetBoolType(LLVMContext& C)
+    {
+        return Type::getInt32Ty(C);
+    }
+    static Constant* GetBoolValue(LLVMContext& C, size_t val)
+    {
+        return ConstantInt::get(GetBoolType(C), val);
+    }
+
     static llvm::Instruction::CastOps GetCastToInteger(Type* type)
     {
         if (type->isIntegerTy())

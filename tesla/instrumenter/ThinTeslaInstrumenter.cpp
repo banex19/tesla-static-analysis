@@ -345,7 +345,7 @@ void ThinTeslaInstrumenter::UpdateEventsWithParameters(llvm::Module& M, ThinTesl
             {
                 var = builder.CreateLoad(var);
             }
-            
+
             builder.CreateStore(builder.CreateCast(TeslaTypes::GetCastToInteger(var->getType()), var, TeslaTypes::GetMatchType(C)),
                                 builder.CreateGEP(builder.CreateBitCast(matchArray, TeslaTypes::GetMatchType(C)->getPointerTo()),
                                                   TeslaTypes::GetInt(C, 32, i)));
@@ -634,9 +634,9 @@ GlobalVariable* ThinTeslaInstrumenter::GetAutomatonGlobal(llvm::Module& M, ThinT
                                           TeslaTypes::GetSizeT(C, 0),
                                           ConstantPointerNull::get(TeslaTypes::EventTy->getPointerTo()),
                                           ConstantPointerNull::get(TeslaTypes::EventTy->getPointerTo()),
-                                          TeslaTypes::GetInt(C, 8, 0),
-                                          TeslaTypes::GetInt(C, 8, 0),
-                                          TeslaTypes::GetInt(C, 8, 0));
+                                          TeslaTypes::GetBoolValue(C, 0),
+                                          TeslaTypes::GetBoolValue(C, 0),
+                                          TeslaTypes::GetBoolValue(C, 0));
 
     Constant* init = ConstantStruct::get(TeslaTypes::AutomatonTy, eventsArrayPtr, cFlags,
                                          TeslaTypes::GetSizeT(C, assertion.events.size()),

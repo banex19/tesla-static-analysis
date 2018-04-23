@@ -6,7 +6,9 @@
 void StartAutomaton(TeslaAutomaton* automaton);
 void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data);
 void UpdateAutomatonDeterministic(TeslaAutomaton* automaton, TeslaEvent* event);
-void VerifyAutomaton(TeslaAutomaton* automaton, bool verifyAllEvents);
+void UpdateAutomatonDeterministicGeneric(TeslaAutomaton* automaton, TeslaEvent* event, bool updateTag);
+void VerifyAutomaton(TeslaAutomaton* automaton);
+void VerifyAfterAssertion(TeslaAutomaton* automaton, size_t i, TeslaTemporalTag lowerBound, TeslaTemporalTag upperBound);
 void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event);
 
 size_t GetSuccessor(TeslaEvent* event, TeslaEvent* successor);

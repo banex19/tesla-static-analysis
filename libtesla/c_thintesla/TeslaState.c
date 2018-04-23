@@ -18,8 +18,8 @@ void TA_Reset(TeslaAutomaton* automaton)
 
             if (event->state.store != NULL)
             {
+              //   printf("[Clear] Store for event %d: %p\n", event->id, event->state.store);
                 TeslaStore_Clear(event->state.store);
-
                 //   TeslaFree(event->state.store);
                 //   event->state.store = NULL;
             }

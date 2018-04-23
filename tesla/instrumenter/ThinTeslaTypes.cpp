@@ -68,7 +68,7 @@ void TeslaTypes::PopulateAutomatonTy(Module& M)
     IntegerType* Int32Ty = IntegerType::getInt32Ty(C);
     IntegerType* SizeTTy = IntegerType::get(C, sizeof(size_t) * 8);
     IntegerType* Int8Ty = IntegerType::getInt8Ty(C);
-    IntegerType* BoolTy = Int8Ty;
+    IntegerType* BoolTy = GetBoolType(C);
     PointerType* Int8PtrTy = PointerType::getUnqual(Int8Ty);
     PointerType* VoidPtrTy = Int8PtrTy;
     PointerType* VoidPtrPtrTy = PointerType::getUnqual(Int8PtrTy);

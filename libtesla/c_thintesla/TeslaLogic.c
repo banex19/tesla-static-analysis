@@ -14,6 +14,23 @@
         (byte & 0x02 ? '1' : '0'), \
         (byte & 0x01 ? '1' : '0')
 
+void printBits(size_t const size, void* ptr)
+{
+    unsigned char* b = (unsigned char*)ptr;
+    unsigned char byte;
+    int i, j;
+
+    for (i = size - 1; i >= 0; i--)
+    {
+        for (j = 7; j >= 0; j--)
+        {
+            byte = (b[i] >> j) & 1;
+            printf("%u", byte);
+        }
+    }
+    puts("");
+}
+
 const size_t NO_SUCC = SIZE_MAX;
 
 size_t GetSuccessor(TeslaEvent* event, TeslaEvent* successor)
@@ -92,6 +109,11 @@ void StartAutomaton(TeslaAutomaton* automaton)
         automaton->state.isCorrect = allCorrect;
     }
 
+    for (size_t i = 0; i < automaton->numEvents; ++i)
+    {
+        //    printf("[Init] Store for event %d: %p\n", automaton->events[i]->id, automaton->events[i]->state.store);
+    }
+
     if (!automaton->state.isCorrect)
     {
         TeslaWarning("Automaton may be incorrect");
@@ -113,10 +135,10 @@ void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data)
     if (!automaton->state.isActive)
         return;
 
-    if (!event->flags.isBeforeAssertion) // We've already reached the assertion, we have more information now.
+    if (automaton->state.reachedAssertion) // We've already reached the assertion, we have more information now.
     {
         if (memcmp(data, event->state.matchData, event->state.matchDataSize * sizeof(size_t)) == 0)
-            UpdateAutomatonDeterministic(automaton, event);
+            UpdateAutomatonDeterministicGeneric(automaton, event, false);
         return;
     }
 
@@ -153,6 +175,11 @@ void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data)
 }
 
 void UpdateAutomatonDeterministic(TeslaAutomaton* automaton, TeslaEvent* event)
+{
+    return UpdateAutomatonDeterministicGeneric(automaton, event, true);
+}
+
+void UpdateAutomatonDeterministicGeneric(TeslaAutomaton* automaton, TeslaEvent* event, bool updateTag)
 {
     bool triedAgain = false;
     bool foundSuccessor = false;
@@ -230,7 +257,8 @@ tryagain:
         if ((!foundSuccessor || triedAgain) && event->id <= originalCurrent->id) // We're backtracking.
             automaton->state.currentTemporalTag <<= 1;
 
-        *((uintptr_t*)&(event->state.store)) |= automaton->state.currentTemporalTag;
+        if (updateTag)
+            *((uintptr_t*)&(event->state.store)) |= automaton->state.currentTemporalTag;
 
         if ((!foundSuccessor || triedAgain) && event->id > originalCurrent->id) // We briefly went to the future, now we're going back to the past.
             automaton->state.currentTemporalTag <<= 1;
@@ -240,13 +268,16 @@ tryagain:
 
     if (event->flags.isAssertion)
     {
+        if (automaton->state.reachedAssertion)
+            TeslaAssertionFailMessage(automaton, "Assertion site reached multiple times");
+
         if (!foundSuccessor)
         {
             TeslaAssertionFail(automaton);
         }
 
         if (!automaton->flags.isDeterministic)
-            VerifyAutomaton(automaton, false);
+            VerifyAutomaton(automaton);
 
         automaton->state.reachedAssertion = true;
     }
@@ -254,14 +285,18 @@ tryagain:
 
 //#define PRINT_VERIFICATION
 
-void VerifyORBlock(TeslaAutomaton* automaton, int* i, TeslaTemporalTag* lowerBound, TeslaTemporalTag* upperBound)
+void VerifyORBlock(TeslaAutomaton* automaton, size_t* i, TeslaTemporalTag* lowerBound, TeslaTemporalTag* upperBound)
 {
     size_t localIndex = *i;
 
     TeslaTemporalTag max = *upperBound;
     TeslaTemporalTag min = (size_t)-1;
 
-    TeslaTemporalTag validMask = (*upperBound - ONE) ^ min;
+    TeslaTemporalTag validMask = (*lowerBound - ONE) ^ min;
+#ifdef PRINT_VERIFICATION
+    printf("[OR] Valid mask:\t");
+    printBits(sizeof(validMask), &validMask);
+#endif
 
     bool atLeastOnceinOR = false;
     for (; localIndex < automaton->numEvents; ++localIndex)
@@ -277,7 +312,7 @@ void VerifyORBlock(TeslaAutomaton* automaton, int* i, TeslaTemporalTag* lowerBou
                 TeslaAssertionFailMessage(automaton, "No event in OR block has occurred");
 
             if (*lowerBound == INVALID_TAG)
-                *lowerBound = min;
+                *lowerBound = max;
 
             *upperBound = max;
             *i = localIndex - 1;
@@ -287,12 +322,21 @@ void VerifyORBlock(TeslaAutomaton* automaton, int* i, TeslaTemporalTag* lowerBou
         TeslaTemporalTag tag = event->flags.isDeterministic ? (TeslaTemporalTag)((uintptr_t)event->state.store)
                                                             : TeslaStore_Get(event->state.store, event->state.matchData);
 
-        if (tag != INVALID_TAG)
+#ifdef PRINT_VERIFICATION
+        printf("[OR] Current tag:\t");
+        printBits(sizeof(*upperBound), upperBound);
+        printf("[OR] Tag for event %llu:\t", event->id);
+        printBits(sizeof(tag), &tag);
+#endif
+
+        if (tag != INVALID_TAG && tag >= *upperBound) // Real event.
+        {
             atLeastOnceinOR = true;
-        else if (tag == INVALID_TAG || tag < *upperBound)
+        }
+        else if (tag == INVALID_TAG || tag < *lowerBound) // Didn't happen or happened too far in the past.
             continue;
 
-        if (!IsPowerOfTwo(validMask & tag))
+        if (validMask && (!IsPowerOfTwo(validMask & tag) || (validMask & tag) < *upperBound))
             TeslaAssertionFailMessage(automaton, "OR event occurred multiple times");
 
         TeslaTemporalTag bound = ONE << LeftmostOne(tag);
@@ -305,20 +349,25 @@ void VerifyORBlock(TeslaAutomaton* automaton, int* i, TeslaTemporalTag* lowerBou
     }
 }
 
-void VerifyAutomaton(TeslaAutomaton* automaton, bool verifyAllEvents)
+void VerifyAutomaton(TeslaAutomaton* automaton)
 {
     TeslaTemporalTag upperBound = INVALID_TAG;
     TeslaTemporalTag lowerBound = INVALID_TAG;
 
-    for (size_t i = 1; i < automaton->numEvents; ++i)
+    for (size_t i = 1; i < automaton->numEvents - 1; ++i)
     {
         TeslaEvent* event = automaton->events[i];
 
-        if (!verifyAllEvents && event->flags.isAssertion)
-            break;
+        if (event->flags.isAssertion)
+        {
+            VerifyAfterAssertion(automaton, i + 1, lowerBound, upperBound);
+            return;
+        }
 
         if (!event->flags.isDeterministic && (event->state.store == NULL || event->state.store->type == TESLA_STORE_INVALID))
-            continue;
+        {
+            assert(false);
+        }
 
         if (event->flags.isOR)
         {
@@ -329,8 +378,10 @@ void VerifyAutomaton(TeslaAutomaton* automaton, bool verifyAllEvents)
         TeslaTemporalTag tag = event->flags.isDeterministic ? (TeslaTemporalTag)((uintptr_t)event->state.store)
                                                             : TeslaStore_Get(event->state.store, event->state.matchData);
 #ifdef PRINT_VERIFICATION
-        printf("Current tag: %llu\n", upperBound);
-        printf("Tag for event %llu: %llu\n", event->id, tag);
+        printf("Current tag:\t\t");
+        printBits(sizeof(upperBound), &upperBound);
+        printf("Tag for event %llu:\t", event->id);
+        printBits(sizeof(tag), &tag);
 #endif
 
         if (event->flags.isOptional && (tag == INVALID_TAG || tag < upperBound))
@@ -354,6 +405,29 @@ void VerifyAutomaton(TeslaAutomaton* automaton, bool verifyAllEvents)
         if ((MaskBetweenExclUpper(upperBound, lowerBound) & tag) != 0)
         {
             TeslaAssertionFailMessage(automaton, "Multiple events of the same type occurred");
+        }
+    }
+}
+
+void VerifyAfterAssertion(TeslaAutomaton* automaton, size_t i, TeslaTemporalTag lowerBound, TeslaTemporalTag upperBound)
+{
+    for (; i < automaton->numEvents - 1; ++i)
+    {
+        TeslaEvent* event = automaton->events[i];
+
+        if (!event->flags.isDeterministic && (event->state.store == NULL || event->state.store->type == TESLA_STORE_INVALID))
+        {
+            assert(false);
+        }
+
+        //  printf("Store for event %d: %p\n", event->id, event->state.store);
+
+        TeslaTemporalTag tag = event->flags.isDeterministic ? (TeslaTemporalTag)((uintptr_t)event->state.store)
+                                                            : TeslaStore_Get(event->state.store, event->state.matchData);
+
+        if (tag >= lowerBound)
+        {
+            TeslaAssertionFailMessage(automaton, "Event after assertion happened before assertion");
         }
     }
 }

@@ -108,6 +108,8 @@ void ThinTeslaAssertion::ConvertBoolean(const BooleanExpr& exp)
 
         isOR = false;
     }
+    else
+        assert(false && "Boolean expression not supported");
 }
 
 void ThinTeslaAssertion::ConvertAssertionSite(const AssertionSite& site)
