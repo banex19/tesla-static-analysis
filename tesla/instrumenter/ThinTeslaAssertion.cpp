@@ -2,13 +2,13 @@
 
 using namespace tesla;
 
-std::vector<ThinTeslaEventPtr> GetORBlock(std::vector<ThinTeslaEventPtr>& events, size_t start)
+std::vector<ThinTeslaEventPtr> GetOROptionalBlock(std::vector<ThinTeslaEventPtr>& events, size_t start)
 {
     std::vector<ThinTeslaEventPtr> block;
 
     for (size_t i = start; i < events.size(); ++i)
     {
-        if (events[i]->isOR)
+        if (events[i]->isOR || events[i]->isOptional)
         {
             block.push_back(events[i]);
         }
@@ -39,9 +39,9 @@ void ThinTeslaAssertion::LinkEvents()
 
         event->isBeforeAssertion = beforeAssertion;
 
-        if (next->isOR)
+        if (next->isOR || next->isOptional)
         {
-            auto block = GetORBlock(events, i + 1);
+            auto block = GetOROptionalBlock(events, i + 1);
 
             for (auto& orEvent : block)
             {
@@ -170,6 +170,9 @@ void ThinTeslaAssertion::ConvertFunction(const Expression& fun)
 
         AddEvent(event);
     }
+
+    if (fun.isoptional())
+        events[events.size() - 1]->isOptional = true;
 
     affectedFunctions.insert(function.function().name());
 }

@@ -86,6 +86,11 @@ cl::opt<bool> OverwriteCache(
     cl::desc("Overwrite the current cache and build a new one from scratch"),
     cl::init(false));
 
+cl::opt<bool> ThinTeslaSpecific(
+    "thin-tesla",
+    cl::desc("Use ThinTESLA-specific representation"),
+    cl::init(false));
+
 cl::list<std::string> ExtraExtensions(
     "a",
     cl::desc("Extra extensions to consider"));
@@ -167,7 +172,7 @@ void TraverseSourcesRec(const std::string& sourceRoot, std::unordered_map<std::s
 
                     if (cached.find(path) != cached.end() && cached[path].timestamp >= timestamp)
                     {
-                    //    OutputVerbose("Found file " + path + " which is already cached and up-to-date", Verbose);
+                        //    OutputVerbose("Found file " + path + " which is already cached and up-to-date", Verbose);
                         cached[path].upToDate = true;
                         cached[path].stillExisting = true;
                     }

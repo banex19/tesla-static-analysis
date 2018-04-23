@@ -38,6 +38,7 @@
 #include <clang/AST/ExprObjC.h>
 #include <clang/Basic/Diagnostic.h>
 #include <clang/Lex/Lexer.h>
+#include <llvm/Support/CommandLine.h>
 
 #include <llvm/ADT/StringSwitch.h>
 
@@ -47,6 +48,8 @@
 
 using namespace clang;
 using namespace tesla;
+
+extern llvm::cl::opt<bool> ThinTeslaSpecific;
 
 Parser* Parser::AssertionParser(CallExpr* Call, ASTContext& Ctx)
 {
@@ -631,23 +634,30 @@ bool Parser::ParseModifier(Expression* E, const CallExpr* Call, Flags F)
 
 bool Parser::ParseOptional(Expression* E, const CallExpr* Call, Flags F)
 {
-
-    // The 'optional' modifier actually takes two arguments ('ignore' and
-    // a programmer-supplied argument); only talk about the user argument in
-    // the error message.
-    if (Call->getNumArgs() != 2)
+    if (!ThinTeslaSpecific)
     {
-        ReportError("'optional' modifier takes exactly one user argument", Call);
-        return false;
+        // The 'optional' modifier actually takes two arguments ('ignore' and
+        // a programmer-supplied argument); only talk about the user argument in
+        // the error message.
+        if (Call->getNumArgs() != 2)
+        {
+            ReportError("'optional' modifier takes exactly one user argument", Call);
+            return false;
+        }
+
+        // Implemented as (null ^ optional_expression).
+        E->set_type(Expression::BOOLEAN_EXPR);
+        BooleanExpr* B = E->mutable_booleanexpr();
+        B->set_operation(BooleanExpr::BE_Xor);
+
+        B->add_expression()->set_type(Expression::NULL_EXPR);
+        return Parse(B->add_expression(), Call->getArg(1), F);
     }
-
-    // Implemented as (null ^ optional_expression).
-    E->set_type(Expression::BOOLEAN_EXPR);
-    BooleanExpr* B = E->mutable_booleanexpr();
-    B->set_operation(BooleanExpr::BE_Xor);
-
-    B->add_expression()->set_type(Expression::NULL_EXPR);
-    return Parse(B->add_expression(), Call->getArg(1), F);
+    else
+    {
+        E->set_isoptional(true);
+        return Parse(E, Call->getArg(1), F);
+    }
 }
 
 bool Parser::ParseFunctionCall(Expression* E, const BinaryOperator* Bop,
@@ -669,7 +679,7 @@ bool Parser::ParseFunctionCall(Expression* E, const BinaryOperator* Bop,
 
     Expr* RHS = Bop->getRHS();
 
-   /* if (!(LHSisICE ^ RHS->isIntegerConstantExpr(Ctx)))
+    /* if (!(LHSisICE ^ RHS->isIntegerConstantExpr(Ctx)))
     {
         ReportError("one of {LHS,RHS} must be a constant", Bop);
         return false;

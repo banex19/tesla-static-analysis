@@ -1059,6 +1059,13 @@ class Expression : public ::google::protobuf::Message /* @@protoc_insertion_poin
   ::tesla::Identifier* release_subautomaton();
   void set_allocated_subautomaton(::tesla::Identifier* subautomaton);
 
+  // optional bool isOptional = 8 [default = false];
+  bool has_isoptional() const;
+  void clear_isoptional();
+  static const int kIsOptionalFieldNumber = 8;
+  bool isoptional() const;
+  void set_isoptional(bool value);
+
   // @@protoc_insertion_point(class_scope:tesla.Expression)
  private:
   inline void set_has_type();
@@ -1075,6 +1082,8 @@ class Expression : public ::google::protobuf::Message /* @@protoc_insertion_poin
   inline void clear_has_fieldassign();
   inline void set_has_subautomaton();
   inline void clear_has_subautomaton();
+  inline void set_has_isoptional();
+  inline void clear_has_isoptional();
 
   ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
   ::google::protobuf::uint32 _has_bits_[1];
@@ -1082,10 +1091,11 @@ class Expression : public ::google::protobuf::Message /* @@protoc_insertion_poin
   ::tesla::BooleanExpr* booleanexpr_;
   ::tesla::Sequence* sequence_;
   ::tesla::AssertionSite* assertsite_;
+  int type_;
+  bool isoptional_;
   ::tesla::FunctionEvent* function_;
   ::tesla::FieldAssignment* fieldassign_;
   ::tesla::Identifier* subautomaton_;
-  int type_;
   friend void  protobuf_AddDesc_tesla_2eproto();
   friend void protobuf_AssignDesc_tesla_2eproto();
   friend void protobuf_ShutdownFile_tesla_2eproto();
@@ -3282,6 +3292,30 @@ inline void Expression::set_allocated_subautomaton(::tesla::Identifier* subautom
     clear_has_subautomaton();
   }
   // @@protoc_insertion_point(field_set_allocated:tesla.Expression.subAutomaton)
+}
+
+// optional bool isOptional = 8 [default = false];
+inline bool Expression::has_isoptional() const {
+  return (_has_bits_[0] & 0x00000080u) != 0;
+}
+inline void Expression::set_has_isoptional() {
+  _has_bits_[0] |= 0x00000080u;
+}
+inline void Expression::clear_has_isoptional() {
+  _has_bits_[0] &= ~0x00000080u;
+}
+inline void Expression::clear_isoptional() {
+  isoptional_ = false;
+  clear_has_isoptional();
+}
+inline bool Expression::isoptional() const {
+  // @@protoc_insertion_point(field_get:tesla.Expression.isOptional)
+  return isoptional_;
+}
+inline void Expression::set_isoptional(bool value) {
+  set_has_isoptional();
+  isoptional_ = value;
+  // @@protoc_insertion_point(field_set:tesla.Expression.isOptional)
 }
 
 // -------------------------------------------------------------------
