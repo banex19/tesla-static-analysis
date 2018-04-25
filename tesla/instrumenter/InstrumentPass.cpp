@@ -31,7 +31,7 @@ static cl::opt<bool>
 
 static cl::opt<bool>
     DryRun("tesla-dry-run",
-            cl::desc("Do not perform any action (dry run)", cl::init(false));
+           cl::desc("Do not perform any action (dry run)"), cl::init(false));
 
 struct InstrumentPass : public ModulePass
 {
@@ -62,9 +62,9 @@ bool InstrumentPass::runOnModule(Module& M)
         {
             TeslaTypes::Populate(M);
             Passes.add(new ThinTeslaInstrumenter{*Manifest});
-                TeslaTypes::Populate(M);
+            TeslaTypes::Populate(M);
             Passes.add(new ThinTeslaInstrumenter{*Manifest});
-        //    Passes.add(new tesla::RemoveInstrumenter(*Manifest, SuppressDI));
+            //    Passes.add(new tesla::RemoveInstrumenter(*Manifest, SuppressDI));
         }
     }
     else
