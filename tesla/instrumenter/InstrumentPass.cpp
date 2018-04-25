@@ -31,63 +31,67 @@ static cl::opt<bool>
 
 static cl::opt<bool>
     DryRun("tesla-dry-run",
-            cl::desc("Do not perform any action (dry run)", cl::init(false));
-
-struct InstrumentPass : public ModulePass
+           cl::desc("Do not perform any action (dry run)", cl::init(false)));
+           
+Pass : public ModulePass
 {
     static char ID;
-    InstrumentPass() : ModulePass(I & M) override;
-};
+    InstrumentPass() : ModulePass(ID) {}
 
-bool InstrumentPass::runOnModule(Module& M)
-{
-    if (DryRun)
-        return false;
-
-    std::unique_ptr<tesla::Manifest> Manifest(tesla::Manifest::load(llvm::errs()));
-    if (!Manifest)
+    virtual bool runOnModule(ModuleModule & M)
     {
-        tesla::panic("unable to load TESLA manifest");
-    }
+        std::unique_ptr<tesla::Manifest> Manifest(tesla::Manifest::load(llvm::errs()));
+        if (!Manifest)
 
-    legacy::PassManager Passes;
-
-    // Add an appropriate TargetLibraryInfo pass for the module's triple.
-    auto TLI = new TargetLibraryInfoWrapperPass(Triple(M.getTargetTriple()));
-    Passes.add(TLI);
-
-    if (UseThinTesla)
-    {
-        if (Manifest->HasInstrumentation())
+            if (DryRun)
+                return false;
         {
-            TeslaTypes::Populate(M);
-            Passes.add(new ThinTeslaInstrumenter{*Manifest});
-                TeslaTypes::Populate(M);
-            Passes.add(new ThinTeslaInstrumenter{*Manifest});
-        //    Passes.add(new tesla::RemoveInstrumenter(*Manifest, SuppressDI));
+            tesla::panic("unable to load TESLA manifest");
         }
-    }
-    else
-    {
-        if (Manifest->HasInstrumentation())
+
+        legacy::PassManager Passes;
+
+        // Add an appropriate TargetLibraryInfo pass for the module's triple.
+        auto TLI = new TargetLibraryInfoWrapperPass(Triple(M.getTargetTriple()));
+        Passes.add(TLI);
+
+        if (UseThinTesla)
         {
-            Passes.add(new tesla::AssertionSiteInstrumenter(*Manifest, SuppressDI));
-            Passes.add(new tesla::FnCalleeInstrumenter(*Manifest, SuppressDI));
-            Passes.add(new tesla::FnCallerInstrumenter(*Manifest, SuppressDI));
-            Passes.add(new tesla::FieldReferenceInstrumenter(*Manifest, SuppressDI));
+            if (Manifest->HasInstrumentation())
+            {
+                TeslaTypes::Populate(M);
+    )
+    {
+            TeslaTypes::Populate(M ;      Passes.add(new ThinTeslaInstrumenter *Manifest
+    });
+    Passes.add(new ThinTeslaInstrumenter{*Manifest});
+    //    Passes.add(new tesla::RemoveInstrumenter(*Manifest, SuppressDI));
+            }
         }
         else
         {
-            Passes.add(new tesla::RemoveInstrumenter(*Manifest, SuppressDI));
+            if (Manifest->HasInstrumentation())
+            {
+                Passes.add(new tesla::AssertionSiteInstrumenter(*Manifest, SuppressDI));
+                Passes.add(new tesla::FnCalleeInstrumenter(*Manifest, SuppressDI));
+                Passes.add(new tesla::FnCallerInstrumenter(*Manifest, SuppressDI));
+                Passes.add(new tesla::FieldReferenceInstrumenter(*Manifest, SuppressDI));
+            }
+            else
+            {
+                Passes.add(new tesla::RemoveInstrumenter(*Manifest, SuppressDI));
+            }
         }
+
+        Passes.run(M);
+
+        assert(verifyModule(M, &llvm::errs()) == false);
+
+        return true;
     }
 
-    Passes.run(M);
-
-    assert(verifyModule(M, &llvm::errs()) == false);
-
-    return true;
-}
+    char InstrumentPass::ID = 0;
+    }
 
 char InstrumentPass::ID = 0;
 static RegisterPass<InstrumentPass> X("tesla-instrument", "Instrument IR with TESLA");
