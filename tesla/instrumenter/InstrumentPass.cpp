@@ -22,23 +22,28 @@ namespace
 {
 
 static cl::opt<bool>
-    SuppressDI("suppress-debug-instrumentation",
+    SuppressDI("tesla-suppress-debug-instrumentation",
                cl::desc("Suppress the generation of debug output in instrumentation"));
 
 static cl::opt<bool>
     UseThinTesla("thin-tesla",
                  cl::desc("Use ThinTESLA"), cl::init(false));
 
+static cl::opt<bool>
+    DryRun("tesla-dry-run",
+            cl::desc("Do not perform any action (dry run)", cl::init(false));
+
 struct InstrumentPass : public ModulePass
 {
     static char ID;
-    InstrumentPass() : ModulePass(ID) {}
-
-    virtual bool runOnModule(Module& M) override;
+    InstrumentPass() : ModulePass(I & M) override;
 };
 
 bool InstrumentPass::runOnModule(Module& M)
 {
+    if (DryRun)
+        return false;
+
     std::unique_ptr<tesla::Manifest> Manifest(tesla::Manifest::load(llvm::errs()));
     if (!Manifest)
     {
@@ -56,6 +61,8 @@ bool InstrumentPass::runOnModule(Module& M)
         if (Manifest->HasInstrumentation())
         {
             TeslaTypes::Populate(M);
+            Passes.add(new ThinTeslaInstrumenter{*Manifest});
+                TeslaTypes::Populate(M);
             Passes.add(new ThinTeslaInstrumenter{*Manifest});
         //    Passes.add(new tesla::RemoveInstrumenter(*Manifest, SuppressDI));
         }
