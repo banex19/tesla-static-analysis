@@ -22,7 +22,7 @@ namespace
 {
 
 static cl::opt<bool>
-    SuppressDI("tesla-suppress-debug-instrumentation",
+    SuppressDI("suppress-debug-instrumentation",
                cl::desc("Suppress the generation of debug output in instrumentation"));
 
 static cl::opt<bool>
@@ -36,7 +36,9 @@ static cl::opt<bool>
 struct InstrumentPass : public ModulePass
 {
     static char ID;
-    InstrumentPass() : ModulePass(I & M) override;
+    InstrumentPass() : ModulePass(ID) {}
+
+    virtual bool runOnModule(Module& M) override;
 };
 
 bool InstrumentPass::runOnModule(Module& M)
@@ -60,8 +62,6 @@ bool InstrumentPass::runOnModule(Module& M)
     {
         if (Manifest->HasInstrumentation())
         {
-            TeslaTypes::Populate(M);
-            Passes.add(new ThinTeslaInstrumenter{*Manifest});
             TeslaTypes::Populate(M);
             Passes.add(new ThinTeslaInstrumenter{*Manifest});
             //    Passes.add(new tesla::RemoveInstrumenter(*Manifest, SuppressDI));
