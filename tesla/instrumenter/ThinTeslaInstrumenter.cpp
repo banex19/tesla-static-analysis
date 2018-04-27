@@ -5,7 +5,13 @@ using namespace llvm;
 
 char ThinTeslaInstrumenter::ID = 0;
 
-std::set<std::string> CollectModuleFunctions(Module& M)
+void OutFunction(llvm::Function* f)
+{
+    llvm::errs() << "Function " << f->getName() << "\n"
+                 << *f << "\n";
+}
+
+std::set<std::string> ThinTeslaInstrumenter::CollectModuleFunctions(llvm::Module& M)
 {
     std::set<std::string> funs;
 
@@ -17,11 +23,43 @@ std::set<std::string> CollectModuleFunctions(Module& M)
     return funs;
 }
 
+std::set<std::string> ThinTeslaInstrumenter::GetFunctionsInstrumentedMoreThanOnce()
+{
+    std::map<std::string, size_t> histogram;
+
+    for (auto& assertion : assertions)
+    {
+        for (auto event : assertion.events)
+        {
+            if (event->NeedsParametricInstrumentation())
+            {
+                histogram[event->GetInstrumentationTarget()] += 1;
+            }
+        }
+    }
+
+    std::set<std::string> funs;
+
+    for (auto& fun : histogram)
+    {
+        if (fun.second > 1)
+        {
+            funs.insert(fun.first);
+        }
+    }
+
+    return funs;
+}
+
 bool ThinTeslaInstrumenter::runOnModule(llvm::Module& M)
 {
     auto moduleFunctions = CollectModuleFunctions(M);
 
     bool instrumented = false;
+
+    std::vector<ThinTeslaAssertion*> toBeInstrumented;
+
+    multipleInstrumentedFunctions = GetFunctionsInstrumentedMoreThanOnce();
 
     for (auto& assertion : assertions)
     {
@@ -41,12 +79,19 @@ bool ThinTeslaInstrumenter::runOnModule(llvm::Module& M)
 
         if (needsInstrumentation)
         {
-            GlobalVariable* automaton = GetAutomatonGlobal(M, assertion);
-
-            Instrument(M, assertion);
-            instrumented = true;
+            toBeInstrumented.push_back(&assertion);
         }
     }
+
+    for (auto& assertion : toBeInstrumented)
+    {
+        GlobalVariable* automaton = GetAutomatonGlobal(M, *assertion);
+
+        Instrument(M, *assertion);
+        instrumented = true;
+    }
+
+    multipleInstrumentedFunctions.clear();
 
     return instrumented;
 }
@@ -75,12 +120,147 @@ std::vector<llvm::Argument*> ThinTeslaInstrumenter::GetFunctionArguments(llvm::F
     return args;
 }
 
+Function* ThinTeslaInstrumenter::BuildInstrumentationCheck(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaParametricFunction& event)
+{
+    LLVMContext& C = M.getContext();
+
+    Function* baseFunc = M.getFunction(event.functionName);
+    auto args = GetFunctionArguments(baseFunc);
+
+    // Mapping from old arg index to new arg index.
+    std::map<size_t, size_t> newIndices;
+
+    std::vector<ThinTeslaParameter> allParams = event.params;
+
+    std::vector<Type*> argTypes;
+    size_t newIndex = 0;
+    for (auto& param : allParams)
+    {
+        argTypes.push_back(args[param.index]->getType());
+        newIndices[param.index] = newIndex;
+        newIndex++;
+    }
+
+    if (event.returnValue.exists)
+    {
+        argTypes.push_back(baseFunc->getReturnType());
+        newIndices[event.returnValue.index] = newIndex;
+        allParams.push_back(event.returnValue);
+    }
+
+    Function* function = nullptr;
+    function = (Function*)M.getOrInsertFunction(event.functionName + "_instrumented_" + GetEventID(assertion, event),
+                                                FunctionType::get(Type::getVoidTy(C), argTypes, false));
+
+    auto newArgs = GetFunctionArguments(function);
+
+    BasicBlock* instrument = BasicBlock::Create(C, "instrumentation", function);
+    BasicBlock* exit = BasicBlock::Create(C, "exit", function);
+    IRBuilder<> builder{exit};
+    builder.CreateRetVoid();
+
+    BasicBlock* ifTrue = instrument;
+
+    size_t constIndex = 0;
+
+    // First match all constant parameters.
+    for (auto& param : allParams)
+    {
+        if (!param.isConstant)
+            continue;
+
+        BasicBlock* ifBlock = BasicBlock::Create(C, "if_" + std::to_string(constIndex), function, ifTrue);
+
+        auto arg = newArgs[newIndices[param.index]];
+
+        builder.SetInsertPoint(ifBlock);
+        auto cond = builder.CreateICmpEQ(arg, ConstantInt::get(arg->getType(), param.constantValue));
+        builder.CreateCondBr(cond, ifTrue, exit);
+
+        ifTrue = ifBlock;
+        constIndex++;
+    }
+
+    // Now collect all runtime values if needed.
+    builder.SetInsertPoint(instrument);
+
+    if (event.GetMatchDataSize() > 0)
+    {
+        ConstantInt* totalArgSize = TeslaTypes::GetInt(C, 32, event.GetMatchDataSize());
+        auto matchArray = builder.CreateAlloca(TeslaTypes::GetMatchType(C), totalArgSize, "args_array");
+
+        size_t i = 0;
+        for (auto& param : allParams)
+        {
+            if (param.isConstant)
+                continue;
+
+            Argument* arg = newArgs[newIndices[param.index]];
+
+            builder.CreateStore(builder.CreateCast(TeslaTypes::GetCastToInteger(arg->getType()), arg, TeslaTypes::GetMatchType(C)),
+                                builder.CreateGEP(matchArray, TeslaTypes::GetInt(C, 32, i)));
+
+            ++i;
+        }
+
+        Function* updateAutomaton = TeslaTypes::GetUpdateAutomaton(M);
+        builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event),
+                                             builder.CreateBitCast(matchArray, Type::getInt8PtrTy(C))});
+    }
+    else // No runtime values, all checks have been done statically.
+    {
+        Function* updateAutomaton = TeslaTypes::GetUpdateAutomatonDeterministic(M);
+        builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event)});
+    }
+
+    builder.CreateBr(exit);
+
+    return function;
+}
+
 void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaParametricFunction& event)
 {
     Function* function = M.getFunction(event.functionName);
 
     if (function == nullptr || function->isDeclaration())
         return;
+
+    bool instrumentedMultipleTimes = IsFunctionInstrumentedMultipleTimes(event.functionName);
+
+    if (true || instrumentedMultipleTimes)
+    {
+        Function* instrCheck = BuildInstrumentationCheck(M, assertion, event);
+
+        auto args = GetFunctionArguments(function);
+
+        std::vector<Value*> callArgs;
+        for (auto& param : event.params)
+        {
+            callArgs.push_back(args[param.index]);
+        }
+
+        if (!event.returnValue.exists) // Instrument at entry.
+        {
+            BasicBlock* entryBlock = &function->getEntryBlock();
+            IRBuilder<> builder{entryBlock->getFirstNonPHI()};
+            builder.CreateCall(instrCheck, callArgs);
+        }
+        else // Instrument every exit.
+        {
+            auto exits = GetEveryExit(function);
+            for (auto& exit : exits)
+            {
+                auto retVal = dyn_cast<ReturnInst>(exit->getTerminator())->getReturnValue();
+                assert(retVal != nullptr);
+                callArgs.push_back(retVal);
+
+                IRBuilder<> builder{exit->getTerminator()};
+                builder.CreateCall(instrCheck, callArgs);
+            }
+        }
+
+        return;
+    }
 
     auto& C = M.getContext();
 
@@ -93,7 +273,6 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
 
     if (event.GetMatchDataSize() > 0) // Store runtime parameters to an array on the stack.
     {
-
         instrumentBlock = BasicBlock::Create(C, "instrumentation", function, originalEntry);
         IRBuilder<> builder{instrumentBlock};
 
@@ -112,11 +291,6 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
 
             ++i;
         }
-
-        /* Function* test = (Function*)M.getOrInsertFunction("testArray", FunctionType::get(Type::getVoidTy(C),
-                                                                                         TeslaTypes::GetMatchType(C)->getPointerTo(),
-                                                                                         Type::getInt32Ty(C)));
-        builder.CreateCall(test, {builder.CreateBitCast(array, TeslaTypes::GetMatchType(C)->getPointerTo()), totalArgSize}); */
 
         if (!event.returnValue.exists)
         {
@@ -235,7 +409,7 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
             builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event),
                                                  builder.CreateBitCast(phiMatchArray, Type::getInt8PtrTy(C))});
 
-            builder.CreateRet(returnValue);
+            builder.CreateBr(exitNormal);
         }
         else
         {
@@ -258,7 +432,7 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
                 builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event)});
             }
 
-            builder.CreateRet(returnValue);
+            builder.CreateBr(exitNormal);
         }
     }
 

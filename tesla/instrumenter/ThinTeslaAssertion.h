@@ -84,6 +84,9 @@ class ThinTeslaEvent
 
     virtual bool IsAssertion() { return false; }
 
+    virtual std::string GetInstrumentationTarget() { return ""; }
+    virtual bool NeedsParametricInstrumentation() { return false; }
+
     virtual size_t GetMatchDataSize() { return 0; }
     virtual std::vector<ThinTeslaParameter> GetParameters() { return {}; }
     virtual ThinTeslaParameter GetReturnValue() { return ThinTeslaParameter(); }
@@ -106,6 +109,8 @@ class ThinTeslaFunction : public ThinTeslaEvent
     }
 
     VISITOR_ACCEPT
+
+    std::string GetInstrumentationTarget() { return functionName; }
 
     virtual ~ThinTeslaFunction(){};
 
@@ -139,6 +144,8 @@ class ThinTeslaParametricFunction : public ThinTeslaFunction
     }
 
     VISITOR_ACCEPT
+
+    bool NeedsParametricInstrumentation() { return true; }
 
     void AddParameter(ThinTeslaParameter param)
     {

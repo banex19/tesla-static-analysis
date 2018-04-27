@@ -51,6 +51,7 @@ const TeslaTemporalTag INVALID_TAG = 0;
 const TeslaTemporalTag ONE = 1;
 
 //#define PRINT_TRANSITIONS
+//#define PRINT_VERIFICATION
 
 void StartAutomaton(TeslaAutomaton* automaton)
 {
@@ -283,8 +284,6 @@ tryagain:
     }
 }
 
-//#define PRINT_VERIFICATION
-
 void VerifyORBlock(TeslaAutomaton* automaton, size_t* i, TeslaTemporalTag* lowerBound, TeslaTemporalTag* upperBound)
 {
     size_t localIndex = *i;
@@ -425,7 +424,14 @@ void VerifyAfterAssertion(TeslaAutomaton* automaton, size_t i, TeslaTemporalTag 
         TeslaTemporalTag tag = event->flags.isDeterministic ? (TeslaTemporalTag)((uintptr_t)event->state.store)
                                                             : TeslaStore_Get(event->state.store, event->state.matchData);
 
-        if (tag >= lowerBound)
+#ifdef PRINT_VERIFICATION
+        printf("[AFT] Lower bound:\t");
+        printBits(sizeof(lowerBound), &lowerBound);
+        printf("[AFT] Tag for event %llu:\t", event->id);
+        printBits(sizeof(tag), &tag);
+#endif
+
+        if (tag != INVALID_TAG && tag >= lowerBound)
         {
             TeslaAssertionFailMessage(automaton, "Event after assertion happened before assertion");
         }

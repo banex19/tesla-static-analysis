@@ -34,6 +34,7 @@ class ThinTeslaInstrumenter : public ThinTeslaEventVisitor, public llvm::ModuleP
     void InstrumentEveryExit(llvm::Module& M, llvm::Function* function, ThinTeslaAssertion& assertion, ThinTeslaFunction& event);
     void InstrumentInstruction(llvm::Module& M, llvm::Instruction* instr, ThinTeslaAssertion& assertion, ThinTeslaFunction& event);
     void UpdateEventsWithParameters(llvm::Module& M, ThinTeslaAssertion& assertion, llvm::Instruction* insertPoint);
+    Function* BuildInstrumentationCheck(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaParametricFunction& event);
 
     llvm::CallInst* GetTeslaAssertionInstr(llvm::Function* function, ThinTeslaAssertionSite& event);
     llvm::Instruction* GetFirstInstruction(llvm::Function* function);
@@ -51,10 +52,17 @@ class ThinTeslaInstrumenter : public ThinTeslaEventVisitor, public llvm::ModuleP
     std::string GetAutomatonID(ThinTeslaAssertion& assertion);
 
     std::string GetFilenameFromPath(const std::string& path);
+    std::set<std::string> GetFunctionsInstrumentedMoreThanOnce();
+    std::set<std::string> CollectModuleFunctions(llvm::Module& M);
+    bool IsFunctionInstrumentedMultipleTimes(const std::string& functionName)
+    {
+        return multipleInstrumentedFunctions.find(functionName) != multipleInstrumentedFunctions.end();
+    }
 
     const tesla::Manifest& manifest;
 
     std::vector<ThinTeslaAssertion> assertions;
+    std::set<std::string> multipleInstrumentedFunctions;
 
     static char ID;
 };
