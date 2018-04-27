@@ -205,6 +205,7 @@ class ThinTeslaAssertion
     std::set<std::string> affectedFunctions;
 
     bool isDeterministic = true;
+    bool isThreadLocal = false;
 
   private:
     void BuildAssertion();

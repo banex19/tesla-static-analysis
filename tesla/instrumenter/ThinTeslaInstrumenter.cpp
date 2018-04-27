@@ -3,6 +3,8 @@
 
 using namespace llvm;
 
+const bool THREAD_LOCAL = false;
+
 char ThinTeslaInstrumenter::ID = 0;
 
 void OutFunction(llvm::Function* f)
@@ -225,218 +227,35 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
     if (function == nullptr || function->isDeclaration())
         return;
 
-    bool instrumentedMultipleTimes = IsFunctionInstrumentedMultipleTimes(event.functionName);
-
-    if (true || instrumentedMultipleTimes)
-    {
-        Function* instrCheck = BuildInstrumentationCheck(M, assertion, event);
-
-        auto args = GetFunctionArguments(function);
-
-        std::vector<Value*> callArgs;
-        for (auto& param : event.params)
-        {
-            callArgs.push_back(args[param.index]);
-        }
-
-        if (!event.returnValue.exists) // Instrument at entry.
-        {
-            BasicBlock* entryBlock = &function->getEntryBlock();
-            IRBuilder<> builder{entryBlock->getFirstNonPHI()};
-            builder.CreateCall(instrCheck, callArgs);
-        }
-        else // Instrument every exit.
-        {
-            auto exits = GetEveryExit(function);
-            for (auto& exit : exits)
-            {
-                auto retVal = dyn_cast<ReturnInst>(exit->getTerminator())->getReturnValue();
-                assert(retVal != nullptr);
-                callArgs.push_back(retVal);
-
-                IRBuilder<> builder{exit->getTerminator()};
-                builder.CreateCall(instrCheck, callArgs);
-            }
-        }
-
-        return;
-    }
-
-    auto& C = M.getContext();
-
-    BasicBlock* originalEntry = &function->getEntryBlock();
-    BasicBlock* instrumentBlock = nullptr;
-    Value* matchArray = nullptr;
+    Function* instrCheck = BuildInstrumentationCheck(M, assertion, event);
 
     auto args = GetFunctionArguments(function);
-    ConstantInt* totalArgSize = TeslaTypes::GetInt(C, 32, event.GetMatchDataSize());
 
-    if (event.GetMatchDataSize() > 0) // Store runtime parameters to an array on the stack.
-    {
-        instrumentBlock = BasicBlock::Create(C, "instrumentation", function, originalEntry);
-        IRBuilder<> builder{instrumentBlock};
-
-        matchArray = builder.CreateAlloca(TeslaTypes::GetMatchType(C), totalArgSize, "args_array");
-
-        size_t i = 0;
-        for (auto& param : event.params)
-        {
-            if (param.isConstant)
-                continue;
-
-            Argument* arg = args[param.index];
-
-            builder.CreateStore(builder.CreateCast(TeslaTypes::GetCastToInteger(arg->getType()), arg, TeslaTypes::GetMatchType(C)),
-                                builder.CreateGEP(matchArray, TeslaTypes::GetInt(C, 32, i)));
-
-            ++i;
-        }
-
-        if (!event.returnValue.exists)
-        {
-            Function* updateAutomaton = TeslaTypes::GetUpdateAutomaton(M);
-            builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event),
-                                                 builder.CreateBitCast(matchArray, Type::getInt8PtrTy(C))});
-        }
-
-        builder.CreateBr(originalEntry);
-    }
-
-    if (instrumentBlock == nullptr)
-    {
-        instrumentBlock = BasicBlock::Create(C, "instrumentation", function, originalEntry);
-        IRBuilder<> builder{instrumentBlock};
-
-        if (!event.returnValue.exists)
-        {
-            Function* updateAutomaton = TeslaTypes::GetUpdateAutomatonDeterministic(M);
-            builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event)});
-        }
-
-        builder.CreateBr(originalEntry);
-    }
-
-    // Statically match constant arguments.
-    std::vector<ThinTeslaParameter> constParams;
-
+    std::vector<Value*> callArgs;
     for (auto& param : event.params)
     {
-        if (param.isConstant)
-            constParams.push_back(param);
+        callArgs.push_back(args[param.index]);
     }
 
-    BasicBlock* disableInstrumentationBlock = BasicBlock::Create(C, "no_instrumentation", function);
-    IRBuilder<> builder{disableInstrumentationBlock};
-    builder.CreateBr(originalEntry);
-
-    if (constParams.size() > 0)
+    if (!event.returnValue.exists) // Instrument at entry.
     {
-        BasicBlock* thenBlock = instrumentBlock;
-
-        for (int i = (int)constParams.size() - 1; i >= 0; --i)
-        {
-            size_t index = constParams[i].index;
-            size_t val = constParams[i].constantValue;
-            auto arg = args[index];
-
-            BasicBlock* ifBlock = BasicBlock::Create(C, "if_" + std::to_string(index), function, &function->getEntryBlock());
-
-            IRBuilder<> builder{ifBlock};
-            Value* cond = builder.CreateICmpEQ(builder.CreateCast(TeslaTypes::GetCastToInteger(arg->getType()), arg, TeslaTypes::GetMatchType(C)),
-                                               ConstantInt::get(TeslaTypes::GetMatchType(C), val));
-
-            builder.CreateCondBr(cond, thenBlock, disableInstrumentationBlock);
-
-            thenBlock = ifBlock;
-        }
+        BasicBlock* entryBlock = &function->getEntryBlock();
+        IRBuilder<> builder{entryBlock->getFirstNonPHI()};
+        builder.CreateCall(instrCheck, callArgs);
     }
-
-    if (event.returnValue.exists)
+    else // Instrument every exit.
     {
-        IRBuilder<> builder{originalEntry->getFirstNonPHI()};
-        auto instrumentationActive = builder.CreatePHI(IntegerType::get(C, 1), 2, "instrumentation_active");
-        instrumentationActive->addIncoming(ConstantInt::get(IntegerType::get(C, 1), 1), instrumentBlock);
-        instrumentationActive->addIncoming(ConstantInt::get(IntegerType::get(C, 1), 0), disableInstrumentationBlock);
-
-        auto phiMatchArray = builder.CreatePHI(TeslaTypes::GetMatchType(C)->getPointerTo(), 2, "argsArray_PHI");
-        if (matchArray != nullptr)
-            phiMatchArray->addIncoming(matchArray, instrumentBlock);
-        else
-            phiMatchArray->addIncoming(ConstantPointerNull::get(TeslaTypes::GetMatchType(C)->getPointerTo()), instrumentBlock);
-
-        phiMatchArray->addIncoming(ConstantPointerNull::get(TeslaTypes::GetMatchType(C)->getPointerTo()), disableInstrumentationBlock);
-
-        BasicBlock* checkInstrumentationBlock = BasicBlock::Create(C, "check_instrumentation_return", function);
-        builder.SetInsertPoint(checkInstrumentationBlock);
-
         auto exits = GetEveryExit(function);
-
-        std::vector<Value*> retVals;
-        for (auto exit : exits)
+        for (auto& exit : exits)
         {
-            IRBuilder<> exitBuilder{exit};
-            ReturnInst* returnInst = dyn_cast<ReturnInst>(exit->getTerminator());
-            assert(returnInst != nullptr && returnInst->getReturnValue() != nullptr);
+            auto retVal = dyn_cast<ReturnInst>(exit->getTerminator())->getReturnValue();
+            assert(retVal != nullptr);
+            callArgs.push_back(retVal);
 
-            retVals.push_back(returnInst->getReturnValue());
-            exitBuilder.CreateBr(checkInstrumentationBlock);
-            returnInst->eraseFromParent();
-        }
-
-        auto returnValue = builder.CreatePHI(function->getReturnType(), exits.size(), "returnValue");
-        for (size_t i = 0; i < exits.size(); ++i)
-        {
-            returnValue->addIncoming(retVals[i], exits[i]);
-        }
-
-        BasicBlock* exitNormal = BasicBlock::Create(C, "exit_normal", function);
-        IRBuilder<> exitBuilder{exitNormal};
-        exitBuilder.CreateRet(returnValue);
-
-        BasicBlock* instrumentExitBlock = BasicBlock::Create(C, "instrumentation_return", function);
-
-        auto cond = builder.CreateICmpEQ(instrumentationActive, ConstantInt::get(IntegerType::get(C, 1), 1));
-        builder.CreateCondBr(cond, instrumentExitBlock, exitNormal);
-
-        builder.SetInsertPoint(instrumentExitBlock);
-
-        if (!event.returnValue.isConstant) // Runtime return value, constant/runtime parameters.
-        {
-            builder.CreateStore(builder.CreateCast(TeslaTypes::GetCastToInteger(returnValue->getType()), returnValue, TeslaTypes::GetMatchType(C)),
-                                builder.CreateGEP(phiMatchArray, TeslaTypes::GetInt(C, 32, event.GetMatchDataSize() - 1)));
-
-            Function* updateAutomaton = TeslaTypes::GetUpdateAutomaton(M);
-            builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event),
-                                                 builder.CreateBitCast(phiMatchArray, Type::getInt8PtrTy(C))});
-
-            builder.CreateBr(exitNormal);
-        }
-        else
-        {
-            BasicBlock* exitInstrument = BasicBlock::Create(C, "instrumentation_return_match", function);
-
-            Value* cond = builder.CreateICmpEQ(builder.CreateCast(TeslaTypes::GetCastToInteger(returnValue->getType()), returnValue, TeslaTypes::GetMatchType(C)),
-                                               ConstantInt::get(TeslaTypes::GetMatchType(C), event.returnValue.constantValue));
-            builder.CreateCondBr(cond, exitInstrument, exitNormal);
-            builder.SetInsertPoint(exitInstrument);
-
-            if (event.GetMatchDataSize() > 0) // Constant return value, runtime paramenters.
-            {
-                Function* updateAutomaton = TeslaTypes::GetUpdateAutomaton(M);
-                builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event),
-                                                     builder.CreateBitCast(phiMatchArray, Type::getInt8PtrTy(C))});
-            }
-            else // Constant return value, constant parameters.
-            {
-                Function* updateAutomaton = TeslaTypes::GetUpdateAutomatonDeterministic(M);
-                builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event)});
-            }
-
-            builder.CreateBr(exitNormal);
+            IRBuilder<> builder{exit->getTerminator()};
+            builder.CreateCall(instrCheck, callArgs);
         }
     }
-
-    //   llvm::errs() << *function << "\n";
 }
 
 llvm::CallInst* ThinTeslaInstrumenter::GetTeslaAssertionInstr(llvm::Function* function, ThinTeslaAssertionSite& event)
@@ -484,7 +303,7 @@ llvm::Value* ThinTeslaInstrumenter::GetVariable(llvm::Function* function, const 
     return nullptr;
 }
 
-void ThinTeslaInstrumenter::UpdateEventsWithParameters(llvm::Module& M, ThinTeslaAssertion& assertion, llvm::Instruction* insertPoint)
+void ThinTeslaInstrumenter::UpdateEventsWithParametersGlobal(llvm::Module& M, ThinTeslaAssertion& assertion, llvm::Instruction* insertPoint)
 {
     Function* function = insertPoint->getParent()->getParent();
 
@@ -529,6 +348,57 @@ void ThinTeslaInstrumenter::UpdateEventsWithParameters(llvm::Module& M, ThinTesl
     }
 }
 
+void ThinTeslaInstrumenter::UpdateEventsWithParametersThread(llvm::Module& M, ThinTeslaAssertion& assertion, llvm::Instruction* insertPoint)
+{
+    Function* function = insertPoint->getParent()->getParent();
+
+    IRBuilder<> builder(insertPoint);
+
+    LLVMContext& C = M.getContext();
+
+    Function* updateFunction = TeslaTypes::GetUpdateEventWithData(M);
+    auto automatonGlobal = GetAutomatonGlobal(M, assertion);
+
+    for (auto event : assertion.events)
+    {
+        if (event->isDeterministic || event->GetMatchDataSize() == 0)
+            continue;
+
+        auto params = event->GetParameters();
+        auto retVal = event->GetReturnValue();
+        if (retVal.exists && !retVal.isConstant)
+            params.push_back(retVal);
+
+        size_t matchDataSize = event->GetMatchDataSize();
+        auto dataArray = builder.CreateAlloca(TeslaTypes::GetMatchType(C), TeslaTypes::GetInt(C, 32, matchDataSize));
+
+        size_t i = 0;
+
+        for (auto& param : params)
+        {
+            if (param.isConstant)
+                continue;
+
+            Value* var = GetVariable(function, param.varName);
+            assert(var != nullptr && "Variable to match assertion has been optimized away by the compiler!");
+
+            if (dyn_cast<AllocaInst>(var) != nullptr)
+            {
+                var = builder.CreateLoad(var);
+            }
+
+            builder.CreateStore(builder.CreateCast(TeslaTypes::GetCastToInteger(var->getType()), var, TeslaTypes::GetMatchType(C)),
+                                builder.CreateGEP(dataArray, TeslaTypes::GetInt(C, 32, i)));
+
+            ++i;
+        }
+
+        builder.CreateCall(updateFunction, {automatonGlobal, TeslaTypes::GetSizeT(C, event->id), builder.CreateBitCast(dataArray, Type::getInt8PtrTy(C))});
+    }
+
+   // OutFunction(function);
+}
+
 void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaAssertionSite& event)
 {
     Function* function = M.getFunction(event.functionName);
@@ -548,7 +418,14 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
 
         if (!assertion.isDeterministic)
         {
-            UpdateEventsWithParameters(M, assertion, callInst);
+            if (!assertion.isThreadLocal)
+            {
+                UpdateEventsWithParametersGlobal(M, assertion, callInst);
+            }
+            else
+            {
+                UpdateEventsWithParametersThread(M, assertion, callInst);
+            }
         }
 
         IRBuilder<> builder(callInst);
@@ -703,7 +580,7 @@ GlobalVariable* ThinTeslaInstrumenter::GetEventsArray(llvm::Module& M, ThinTesla
     ArrayType* eventsArrayTy = ArrayType::get(TeslaTypes::EventTy->getPointerTo(), assertion.events.size());
     Constant* eventsArray = ConstantArray::get(eventsArrayTy, events);
 
-    GlobalVariable* var = new GlobalVariable(M, eventsArrayTy, true, GlobalValue::WeakAnyLinkage, eventsArray, autID);
+    GlobalVariable* var = CreateGlobalVariable(M, eventsArrayTy, eventsArray, autID, THREAD_LOCAL);
 
     return var;
 }
@@ -731,7 +608,7 @@ GlobalVariable* ThinTeslaInstrumenter::GetEventGlobal(llvm::Module& M, ThinTesla
 
         ArrayType* eventsArrayTy = ArrayType::get(TeslaTypes::EventTy->getPointerTo(), successors.size());
         Constant* eventsArray = ConstantArray::get(eventsArrayTy, successors);
-        GlobalVariable* eventsArrayGlobal = new GlobalVariable(M, eventsArrayTy, true, GlobalValue::WeakAnyLinkage, eventsArray, eventID + "_succ");
+        GlobalVariable* eventsArrayGlobal = CreateGlobalVariable(M, eventsArrayTy, eventsArray, eventID + "_succ", THREAD_LOCAL);
         eventsArrayPtr = ConstantExpr::getBitCast(eventsArrayGlobal, VoidPtrPtrTy);
     }
 
@@ -744,32 +621,22 @@ GlobalVariable* ThinTeslaInstrumenter::GetEventGlobal(llvm::Module& M, ThinTesla
     flags.isEnd = event.successors.size() == 0;
     Constant* cFlags = ConstantStruct::get(TeslaTypes::EventFlagsTy, TeslaTypes::GetInt(C, 8, *(uint8_t*)(&flags)));
 
-    Constant* matchArray = ConstantPointerNull::get(Int8PtrTy);
-
-    size_t matchDataSize = event.GetMatchDataSize();
-    if (matchDataSize > 0)
-    {
-        GlobalVariable* matchArrayGlobal = GetEventMatchArray(M, assertion, event);
-
-        matchArray = ConstantExpr::getBitCast(matchArrayGlobal, Int8PtrTy);
-    }
-
-    Constant* state = ConstantStruct::get(TeslaTypes::EventStateTy, ConstantPointerNull::get(Int8PtrTy), matchArray,
-                                          TeslaTypes::GetInt(C, 8, matchDataSize));
-
     Constant* init = ConstantStruct::get(TeslaTypes::EventTy, eventsArrayPtr, cFlags,
-                                         TeslaTypes::GetSizeT(C, event.successors.size()), TeslaTypes::GetSizeT(C, event.id), state);
+                                         TeslaTypes::GetSizeT(C, event.successors.size()), TeslaTypes::GetSizeT(C, event.id),
+                                         TeslaTypes::GetInt(C, 8, event.GetMatchDataSize()));
 
-    GlobalVariable* var = new GlobalVariable(M, TeslaTypes::EventTy, true,
-                                             GlobalValue::WeakAnyLinkage, init, eventID);
+    GlobalVariable* var = CreateGlobalVariable(M, TeslaTypes::EventTy, init, eventID, THREAD_LOCAL);
 
     var->setConstant(false); // This variable will be manipulated by libtesla.
 
     return var;
 }
 
-GlobalVariable* ThinTeslaInstrumenter::GetEventMatchArray(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaEvent& event)
+Constant* ThinTeslaInstrumenter::GetEventMatchArray(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaEvent& event)
 {
+    if (event.GetMatchDataSize() == 0)
+        return ConstantPointerNull::get(Type::getInt8PtrTy(M.getContext()));
+
     std::string id = GetEventID(assertion, event) + "_match";
     GlobalVariable* old = M.getGlobalVariable(id);
     if (old != nullptr)
@@ -779,11 +646,38 @@ GlobalVariable* ThinTeslaInstrumenter::GetEventMatchArray(llvm::Module& M, ThinT
 
     ArrayType* matchArrayTy = ArrayType::get(TeslaTypes::GetMatchType(C), event.GetMatchDataSize());
     Constant* matchArray = ConstantArray::get(matchArrayTy, TeslaTypes::GetMatchValue(C, 0));
-    GlobalVariable* matchArrayGlobal = new GlobalVariable(M, matchArrayTy, true, GlobalValue::WeakAnyLinkage, matchArray, id);
+    GlobalVariable* matchArrayGlobal = CreateGlobalVariable(M, matchArrayTy, matchArray, id, THREAD_LOCAL);
 
     matchArrayGlobal->setConstant(false); // This array will be populated at runtime.
 
     return matchArrayGlobal;
+}
+
+GlobalVariable* ThinTeslaInstrumenter::GetEventsStateArray(llvm::Module& M, ThinTeslaAssertion& assertion)
+{
+    std::string id = GetAutomatonID(assertion) + "_events_state";
+    GlobalVariable* old = M.getGlobalVariable(id);
+    if (old != nullptr)
+        return old;
+
+    LLVMContext& C = M.getContext();
+
+    ArrayType* arrayTy = ArrayType::get(TeslaTypes::EventStateTy, assertion.events.size());
+
+    std::vector<Constant*> states;
+    for (size_t i = 0; i < assertion.events.size(); ++i)
+    {
+        Constant* state = ConstantStruct::get(TeslaTypes::EventStateTy, ConstantPointerNull::get(Type::getInt8PtrTy(C)),
+                                              ConstantExpr::getBitCast(GetEventMatchArray(M, assertion, *assertion.events[i]), Type::getInt8PtrTy(C)));
+        states.push_back(state);
+    }
+
+    Constant* array = ConstantArray::get(arrayTy, states);
+    GlobalVariable* global = CreateGlobalVariable(M, arrayTy, array, id, THREAD_LOCAL);
+
+    global->setConstant(false); // This array may be populated at runtime.
+
+    return global;
 }
 
 GlobalVariable* ThinTeslaInstrumenter::GetAutomatonGlobal(llvm::Module& M, ThinTeslaAssertion& assertion)
@@ -802,6 +696,7 @@ GlobalVariable* ThinTeslaInstrumenter::GetAutomatonGlobal(llvm::Module& M, ThinT
 
     TeslaAutomatonFlags flags;
     flags.isDeterministic = assertion.isDeterministic;
+    flags.isThreadLocal = assertion.isThreadLocal;
     Constant* cFlags = ConstantStruct::get(TeslaTypes::AutomatonFlagsTy, TeslaTypes::GetInt(C, 8, *(uint8_t*)(&flags)));
 
     Constant* state = ConstantStruct::get(TeslaTypes::AutomatonStateTy,
@@ -815,10 +710,10 @@ GlobalVariable* ThinTeslaInstrumenter::GetAutomatonGlobal(llvm::Module& M, ThinT
     Constant* init = ConstantStruct::get(TeslaTypes::AutomatonTy, eventsArrayPtr, cFlags,
                                          TeslaTypes::GetSizeT(C, assertion.events.size()),
                                          ConstantExpr::getBitCast(GetStringGlobal(M, autID, autID + "_name"), Int8PtrTy),
-                                         state);
+                                         state, ConstantExpr::getBitCast(GetEventsStateArray(M, assertion), TeslaTypes::EventStateTy->getPointerTo()),
+                                         TeslaTypes::GetSizeT(C, INVALID_THREAD_KEY), ConstantPointerNull::get(Int8PtrTy));
 
-    GlobalVariable* var = new GlobalVariable(M, TeslaTypes::AutomatonTy, true,
-                                             GlobalValue::WeakAnyLinkage, init, autID);
+    GlobalVariable* var = CreateGlobalVariable(M, TeslaTypes::AutomatonTy, init, autID, THREAD_LOCAL);
 
     var->setConstant(false);
 
@@ -835,10 +730,25 @@ GlobalVariable* ThinTeslaInstrumenter::GetStringGlobal(llvm::Module& M, const st
     PointerType* CharPtrTy = PointerType::getUnqual(CharTy);
 
     Constant* strConst = ConstantDataArray::getString(M.getContext(), str);
-    GlobalVariable* var = new GlobalVariable(M, strConst->getType(), true,
-                                             GlobalValue::WeakAnyLinkage, strConst, globalID);
+    GlobalVariable* var = CreateGlobalVariable(M, strConst->getType(), strConst, globalID);
 
-    return var; // This variable will be manipulated by libtesla.
+    return var;
+}
+
+GlobalVariable* ThinTeslaInstrumenter::CreateGlobalVariable(llvm::Module& M, llvm::Type* type, llvm::Constant* initializer,
+                                                            const std::string& name, bool threadLocal)
+{
+    if (threadLocal)
+    {
+        return new GlobalVariable(M, type, true,
+                                  GlobalValue::WeakAnyLinkage, initializer, name,
+                                  nullptr, GlobalValue::ThreadLocalMode::GeneralDynamicTLSModel);
+    }
+    else
+    {
+        return new GlobalVariable(M, type, true,
+                                  GlobalValue::WeakAnyLinkage, initializer, name);
+    }
 }
 
 std::string ThinTeslaInstrumenter::GetAutomatonID(ThinTeslaAssertion& assertion)

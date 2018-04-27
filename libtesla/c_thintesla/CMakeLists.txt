@@ -11,6 +11,7 @@ add_library(cthintesla SHARED
     TeslaMalloc.c
     TeslaHashTable.c
     TeslaLogic.c
+    TeslaLogicPerThread.c
     TeslaState.c
     TeslaStore.c
     TeslaHash.c

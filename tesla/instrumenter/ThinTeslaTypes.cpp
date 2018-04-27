@@ -45,7 +45,7 @@ void TeslaTypes::PopulateEventTy(Module& M)
     PointerType* CharPtrTy = PointerType::getUnqual(CharTy);
     PointerType* CharPtrPtrTy = PointerType::getUnqual(CharPtrTy);
     IntegerType* Int32Ty = IntegerType::getInt32Ty(C);
-    IntegerType* SizeTTy = IntegerType::get(C, sizeof(size_t) * 8);
+    IntegerType* SizeTTy = GetSizeTType(C);
     IntegerType* Int8Ty = IntegerType::getInt8Ty(C);
     PointerType* Int8PtrTy = PointerType::getUnqual(Int8Ty);
     PointerType* VoidPtrTy = Int8PtrTy;
@@ -53,8 +53,8 @@ void TeslaTypes::PopulateEventTy(Module& M)
     //IntegerType* IntPtrTy = DataLayout(&M).getIntPtrType(C);
 
     EventFlagsTy = GetStructType("TeslaEventFlags", {Int8Ty}, M, TESLA_STRUCTS_PACKED);
-    EventStateTy = GetStructType("TeslaEventState", {VoidPtrTy, Int8PtrTy, Int8Ty}, M, TESLA_STRUCTS_PACKED);
-    EventTy = GetStructType("TeslaEvent", {VoidPtrPtrTy, EventFlagsTy, SizeTTy, SizeTTy, EventStateTy}, M, TESLA_STRUCTS_PACKED);
+    EventStateTy = GetStructType("TeslaEventState", {VoidPtrTy, Int8PtrTy}, M, TESLA_STRUCTS_PACKED);
+    EventTy = GetStructType("TeslaEvent", {VoidPtrPtrTy, EventFlagsTy, SizeTTy, SizeTTy, Int8Ty}, M, TESLA_STRUCTS_PACKED);
 }
 
 void TeslaTypes::PopulateAutomatonTy(Module& M)
@@ -66,7 +66,7 @@ void TeslaTypes::PopulateAutomatonTy(Module& M)
     PointerType* CharPtrTy = PointerType::getUnqual(CharTy);
     PointerType* CharPtrPtrTy = PointerType::getUnqual(CharPtrTy);
     IntegerType* Int32Ty = IntegerType::getInt32Ty(C);
-    IntegerType* SizeTTy = IntegerType::get(C, sizeof(size_t) * 8);
+    IntegerType* SizeTTy = GetSizeTType(C);
     IntegerType* Int8Ty = IntegerType::getInt8Ty(C);
     IntegerType* BoolTy = GetBoolType(C);
     PointerType* Int8PtrTy = PointerType::getUnqual(Int8Ty);
@@ -77,7 +77,9 @@ void TeslaTypes::PopulateAutomatonTy(Module& M)
 
     AutomatonFlagsTy = GetStructType("TeslaAutomatonFlags", {Int8Ty}, M, TESLA_STRUCTS_PACKED);
     AutomatonStateTy = GetStructType("TeslaAutomatonState", {SizeTTy, EventPtrTy, EventPtrTy, BoolTy, BoolTy, BoolTy}, M, TESLA_STRUCTS_PACKED);
-    AutomatonTy = GetStructType("TeslaAutomaton", {VoidPtrPtrTy, AutomatonFlagsTy, SizeTTy, VoidPtrTy, AutomatonStateTy}, M, TESLA_STRUCTS_PACKED);
+    AutomatonTy = GetStructType("TeslaAutomaton",
+                                {VoidPtrPtrTy, AutomatonFlagsTy, SizeTTy, VoidPtrTy, AutomatonStateTy, EventStateTy->getPointerTo(), SizeTTy, VoidPtrTy},
+                                M, TESLA_STRUCTS_PACKED);
 }
 
 Function* TeslaTypes::GetUpdateAutomatonDeterministic(Module& M)
@@ -92,7 +94,8 @@ Function* TeslaTypes::GetUpdateAutomaton(Module& M)
     auto& C = M.getContext();
     return (Function*)M.getOrInsertFunction("UpdateAutomaton", FunctionType::get(Type::getVoidTy(C),
                                                                                  {AutomatonTy->getPointerTo(), EventTy->getPointerTo(),
-                                                                                 Type::getInt8PtrTy(C)}, false));
+                                                                                  Type::getInt8PtrTy(C)},
+                                                                                 false));
 }
 
 Function* TeslaTypes::GetStartAutomaton(Module& M)
@@ -107,4 +110,13 @@ Function* TeslaTypes::GetEndAutomaton(Module& M)
     auto& C = M.getContext();
     return (Function*)M.getOrInsertFunction("EndAutomaton", FunctionType::get(Type::getVoidTy(C),
                                                                               AutomatonTy->getPointerTo(), EventTy->getPointerTo()));
+}
+
+Function* TeslaTypes::GetUpdateEventWithData(Module& M)
+{
+    auto& C = M.getContext();
+    return (Function*)M.getOrInsertFunction("UpdateEventWithData", FunctionType::get(Type::getVoidTy(C),
+                                                                                    {AutomatonTy->getPointerTo(),
+                                                                                     GetSizeTType(C),
+                                                                                     Type::getInt8PtrTy(C)}, false));
 }

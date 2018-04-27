@@ -21,6 +21,7 @@ std::vector<ThinTeslaEventPtr> GetOROptionalBlock(std::vector<ThinTeslaEventPtr>
 
 void ThinTeslaAssertion::BuildAssertion()
 {
+    isThreadLocal = desc->context() == tesla::AutomatonDescription_Context_ThreadLocal;
     ConvertExp(automaton->beginning());
     ConvertExp(desc->expression());
     ConvertExp(automaton->end());

@@ -3,6 +3,15 @@
 #include "TeslaMalloc.h"
 #include "TeslaUtils.h"
 
+volatile size_t useless_var = 0;
+#define WASTE_TIME(val)                  \
+    do                                   \
+    {                                    \
+        for (size_t i = 0; i < 100; ++i) \
+            useless_var += i;            \
+    } while (0)
+//#define WASTE_TIME(val)
+
 #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
 #define BYTE_TO_BINARY(byte)       \
     (byte & 0x80 ? '1' : '0'),     \
@@ -50,14 +59,37 @@ size_t GetSuccessor(TeslaEvent* event, TeslaEvent* successor)
 const TeslaTemporalTag INVALID_TAG = 0;
 const TeslaTemporalTag ONE = 1;
 
+#define GET_THREAD_AUTOMATON(automaton)            \
+    do                                             \
+    {                                              \
+        automaton = GetThreadAutomaton(automaton); \
+        if (automaton == NULL)                     \
+            return;                                \
+    } while (0)
+
+//#define PRINT_START
 //#define PRINT_TRANSITIONS
 //#define PRINT_VERIFICATION
 
 void StartAutomaton(TeslaAutomaton* automaton)
 {
+    WASTE_TIME(1);
+
     DEBUG_ASSERT(automaton != NULL);
+
+    if (automaton->flags.isThreadLocal)
+    {
+        automaton = ForkAutomaton(automaton);
+        if (automaton == NULL)
+            return;
+    }
+
     DEBUG_ASSERT(!automaton->state.isActive);
     DEBUG_ASSERT(automaton->numEvents > 0);
+
+#ifdef PRINT_START
+    DebugAutomaton(automaton);
+#endif
 
     // Initial state.
     automaton->state.currentEvent = automaton->events[0];
@@ -78,30 +110,31 @@ void StartAutomaton(TeslaAutomaton* automaton)
         for (size_t i = 0; i < automaton->numEvents; ++i)
         {
             TeslaEvent* event = automaton->events[i];
+            TeslaEventState* state = &automaton->eventStates[i];
 
             if (event->flags.isDeterministic)
                 continue;
 
-            size_t dataSize = event->state.matchDataSize * sizeof(size_t);
+            size_t dataSize = event->matchDataSize * sizeof(size_t);
 
             // Try to allocate space for the store data structure.
-            if (event->state.store == NULL)
+            if (state->store == NULL)
             {
-                event->state.store = TeslaMalloc(sizeof(TeslaStore));
-                if (event->state.store == NULL)
+                state->store = TeslaMalloc(sizeof(TeslaStore));
+                if (state->store == NULL)
                 {
                     allCorrect = false;
                 }
                 else
-                    event->state.store->type = TESLA_STORE_INVALID;
+                    state->store->type = TESLA_STORE_INVALID;
             }
 
             // Try to construct the store.
-            if (event->state.store != NULL && event->state.store->type == TESLA_STORE_INVALID)
+            if (state->store != NULL && state->store->type == TESLA_STORE_INVALID)
             {
-                if (!TeslaStore_Create(TESLA_STORE_HT, 10, dataSize, event->state.store))
+                if (!TeslaStore_Create(TESLA_STORE_HT, 10, dataSize, state->store))
                 {
-                    event->state.store->type = TESLA_STORE_INVALID;
+                    state->store->type = TESLA_STORE_INVALID;
                     allCorrect = false;
                 }
             }
@@ -123,6 +156,8 @@ void StartAutomaton(TeslaAutomaton* automaton)
 
 void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data)
 {
+    GET_THREAD_AUTOMATON(automaton);
+
 #ifdef PRINT_TRANSITIONS
     DebugAutomaton(automaton);
     printf("Transitioning - from:\t");
@@ -136,9 +171,11 @@ void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data)
     if (!automaton->state.isActive)
         return;
 
+    TeslaEventState* state = &automaton->eventStates[event->id];
+
     if (automaton->state.reachedAssertion) // We've already reached the assertion, we have more information now.
     {
-        if (memcmp(data, event->state.matchData, event->state.matchDataSize * sizeof(size_t)) == 0)
+        if (memcmp(data, state->matchData, event->matchDataSize * sizeof(size_t)) == 0)
             UpdateAutomatonDeterministicGeneric(automaton, event, false);
         return;
     }
@@ -159,9 +196,9 @@ void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data)
 
     automaton->state.lastEvent = event;
 
-    if (event->state.store != NULL && event->state.store->type != TESLA_STORE_INVALID)
+    if (state->store != NULL && state->store->type != TESLA_STORE_INVALID)
     {
-        bool insert = TeslaStore_Insert(event->state.store, automaton->state.currentTemporalTag, data);
+        bool insert = TeslaStore_Insert(state->store, automaton->state.currentTemporalTag, data);
     }
 
     if (event->id > current->id && succ == NO_SUCC)
@@ -177,6 +214,7 @@ void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data)
 
 void UpdateAutomatonDeterministic(TeslaAutomaton* automaton, TeslaEvent* event)
 {
+    GET_THREAD_AUTOMATON(automaton);
     return UpdateAutomatonDeterministicGeneric(automaton, event, true);
 }
 
@@ -259,7 +297,11 @@ tryagain:
             automaton->state.currentTemporalTag <<= 1;
 
         if (updateTag)
-            *((uintptr_t*)&(event->state.store)) |= automaton->state.currentTemporalTag;
+        {
+            TeslaEventState* state = &automaton->eventStates[event->id];
+
+            *((uintptr_t*)&(state->store)) |= automaton->state.currentTemporalTag;
+        }
 
         if ((!foundSuccessor || triedAgain) && event->id > originalCurrent->id) // We briefly went to the future, now we're going back to the past.
             automaton->state.currentTemporalTag <<= 1;
@@ -301,8 +343,9 @@ void VerifyORBlock(TeslaAutomaton* automaton, size_t* i, TeslaTemporalTag* lower
     for (; localIndex < automaton->numEvents; ++localIndex)
     {
         TeslaEvent* event = automaton->events[localIndex];
+        TeslaEventState* state = &automaton->eventStates[localIndex];
 
-        if (!event->flags.isDeterministic && (event->state.store == NULL || event->state.store->type == TESLA_STORE_INVALID))
+        if (!event->flags.isDeterministic && (state->store == NULL || state->store->type == TESLA_STORE_INVALID))
             continue;
 
         if (!event->flags.isOR)
@@ -318,8 +361,8 @@ void VerifyORBlock(TeslaAutomaton* automaton, size_t* i, TeslaTemporalTag* lower
             return;
         }
 
-        TeslaTemporalTag tag = event->flags.isDeterministic ? (TeslaTemporalTag)((uintptr_t)event->state.store)
-                                                            : TeslaStore_Get(event->state.store, event->state.matchData);
+        TeslaTemporalTag tag = event->flags.isDeterministic ? (TeslaTemporalTag)((uintptr_t)state->store)
+                                                            : TeslaStore_Get(state->store, state->matchData);
 
 #ifdef PRINT_VERIFICATION
         printf("[OR] Current tag:\t");
@@ -356,6 +399,7 @@ void VerifyAutomaton(TeslaAutomaton* automaton)
     for (size_t i = 1; i < automaton->numEvents - 1; ++i)
     {
         TeslaEvent* event = automaton->events[i];
+        TeslaEventState* state = &automaton->eventStates[i];
 
         if (event->flags.isAssertion)
         {
@@ -363,7 +407,7 @@ void VerifyAutomaton(TeslaAutomaton* automaton)
             return;
         }
 
-        if (!event->flags.isDeterministic && (event->state.store == NULL || event->state.store->type == TESLA_STORE_INVALID))
+        if (!event->flags.isDeterministic && (state->store == NULL || state->store->type == TESLA_STORE_INVALID))
         {
             assert(false);
         }
@@ -374,8 +418,9 @@ void VerifyAutomaton(TeslaAutomaton* automaton)
             continue;
         }
 
-        TeslaTemporalTag tag = event->flags.isDeterministic ? (TeslaTemporalTag)((uintptr_t)event->state.store)
-                                                            : TeslaStore_Get(event->state.store, event->state.matchData);
+        TeslaTemporalTag tag = event->flags.isDeterministic ? (TeslaTemporalTag)((uintptr_t)state->store)
+                                                            : TeslaStore_Get(state->store, state->matchData);
+
 #ifdef PRINT_VERIFICATION
         printf("Current tag:\t\t");
         printBits(sizeof(upperBound), &upperBound);
@@ -413,16 +458,17 @@ void VerifyAfterAssertion(TeslaAutomaton* automaton, size_t i, TeslaTemporalTag 
     for (; i < automaton->numEvents - 1; ++i)
     {
         TeslaEvent* event = automaton->events[i];
+        TeslaEventState* state = &automaton->eventStates[i];
 
-        if (!event->flags.isDeterministic && (event->state.store == NULL || event->state.store->type == TESLA_STORE_INVALID))
+        if (!event->flags.isDeterministic && (state->store == NULL || state->store->type == TESLA_STORE_INVALID))
         {
             assert(false);
         }
 
-        //  printf("Store for event %d: %p\n", event->id, event->state.store);
+        //  printf("Store for event %d: %p\n", event->id, state->store);
 
-        TeslaTemporalTag tag = event->flags.isDeterministic ? (TeslaTemporalTag)((uintptr_t)event->state.store)
-                                                            : TeslaStore_Get(event->state.store, event->state.matchData);
+        TeslaTemporalTag tag = event->flags.isDeterministic ? (TeslaTemporalTag)((uintptr_t)state->store)
+                                                            : TeslaStore_Get(state->store, state->matchData);
 
 #ifdef PRINT_VERIFICATION
         printf("[AFT] Lower bound:\t");
@@ -440,6 +486,8 @@ void VerifyAfterAssertion(TeslaAutomaton* automaton, size_t i, TeslaTemporalTag 
 
 void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event)
 {
+    GET_THREAD_AUTOMATON(automaton);
+
     if (automaton->state.reachedAssertion) // Only check automata that were in the assertion path.
     {
         DEBUG_ASSERT(automaton->state.isActive);
@@ -467,19 +515,26 @@ void DebugEvent(TeslaEvent* event)
 void DebugAutomaton(TeslaAutomaton* automaton)
 {
 #ifndef _KERNEL
-    printf("Automaton %s - Temporal tag: %llu\n", automaton->name, automaton->state.currentTemporalTag);
+    printf("Automaton %s (thread local: %s) - Address %p (events %p) - Temporal tag: %llu\n", automaton->name, automaton->flags.isThreadLocal ? "true" : "false",
+           automaton, automaton->events, automaton->state.currentTemporalTag);
     for (size_t i = 0; i < automaton->numEvents; ++i)
     {
+        DebugMatchArray(automaton, automaton->events[i]);
         DebugEvent(automaton->events[i]);
     }
 #endif
 }
 
-void DebugMatchArray(TeslaEvent* event)
+void DebugMatchArray(TeslaAutomaton* automaton, TeslaEvent* event)
 {
-    size_t* data = event->state.matchData;
-    for (size_t i = 0; i < event->state.matchDataSize; ++i)
+    if (automaton->eventStates != NULL)
     {
-        printf("Event %d (%p) - match[%d] = %llu\n", event->id, event, i, data[i]);
+        TeslaEventState* state = &automaton->eventStates[event->id];
+
+        size_t* data = state->matchData;
+        for (size_t i = 0; i < event->matchDataSize; ++i)
+        {
+            printf("Event %d (%p - match array %p) - match[%d] = %llu\n", event->id, state->matchData, event, i, data[i]);
+        }
     }
 }

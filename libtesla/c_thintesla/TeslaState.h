@@ -1,8 +1,12 @@
 #pragma once
 
 #include "TeslaStore.h"
-#include "ThinTesla.h"
 #include "TeslaTypes.h"
+#include "ThinTesla.h"
+
+#ifndef _KERNEL
+#include <pthread.h>
+#endif
 
 //#define TESLA_PACK_STRUCTS
 #ifdef TESLA_PACK_STRUCTS
@@ -24,7 +28,6 @@ typedef struct TeslaEventState
 {
     TeslaStore* store; // This pointer will be cannibalized to store the temporal tag for deterministic events.
     uint8_t* matchData;
-    uint8_t matchDataSize;
 } TeslaEventState;
 
 _Static_assert(sizeof(TeslaStore*) >= sizeof(TeslaTemporalTag), "Tesla temporal tag too large to fit in pointer");
@@ -35,13 +38,13 @@ typedef struct TeslaEvent
     TeslaEventFlags flags;
     size_t numSuccessors;
     size_t id;
-
-    TeslaEventState state;
+    uint8_t matchDataSize;
 } TeslaEvent;
 
 typedef struct TeslaAutomatonFlags
 {
     uint8_t isDeterministic : 1;
+    uint8_t isThreadLocal : 1;
 } TeslaAutomatonFlags;
 
 typedef struct TeslaAutomatonState
@@ -54,6 +57,9 @@ typedef struct TeslaAutomatonState
     bool reachedAssertion;
 } TeslaAutomatonState;
 
+typedef size_t TeslaThreadKey;
+#define INVALID_THREAD_KEY ((TeslaThreadKey)-1)
+
 typedef struct TeslaAutomaton
 {
     TeslaEvent** events;
@@ -62,6 +68,10 @@ typedef struct TeslaAutomaton
     char* name;
 
     TeslaAutomatonState state;
+    TeslaEventState* eventStates;
+
+    TeslaThreadKey threadKey;
+    struct TeslaAutomaton* next;
 } TeslaAutomaton;
 
 void TA_Reset(TeslaAutomaton* automaton);

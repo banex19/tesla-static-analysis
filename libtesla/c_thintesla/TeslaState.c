@@ -9,20 +9,24 @@ void TA_Reset(TeslaAutomaton* automaton)
         for (size_t i = 0; i < automaton->numEvents; ++i)
         {
             TeslaEvent* event = automaton->events[i];
+            TeslaEventState* state = &automaton->eventStates[i];
 
             if (event->flags.isDeterministic)
             {
-                event->state.store = NULL;
+                state->store = NULL;
                 continue;
             }
 
-            if (event->state.store != NULL)
+            if (state->store != NULL)
             {
-              //   printf("[Clear] Store for event %d: %p\n", event->id, event->state.store);
-                TeslaStore_Clear(event->state.store);
+                //   printf("[Clear] Store for event %d: %p\n", event->id, event->state.store);
+                TeslaStore_Clear(state->store);
                 //   TeslaFree(event->state.store);
                 //   event->state.store = NULL;
             }
         }
     }
+
+    // Signal this automaton can be reused.
+    automaton->threadKey = INVALID_THREAD_KEY;
 }
