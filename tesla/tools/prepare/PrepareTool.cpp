@@ -76,6 +76,10 @@ cl::opt<std::string> OutputDir(
     cl::desc("<output directory>"),
     cl::Required);
 
+cl::list<std::string> RecursiveIncludes(
+    "I",
+    cl::desc("Extra include directories (and all their subfolders recursively)"));
+
 cl::opt<bool> Verbose(
     "v",
     cl::desc("Enable verbosity"),
@@ -206,28 +210,51 @@ int main(int argc, const char** argv)
 {
     llvm::PrettyStackTraceProgram X(argc, argv);
 
+    // Parse tool options (ignoring compilation options passed to Clang).
+    auto toolOptions = GetToolCommandLineOptions(argc, argv);
+    std::vector<const char*> constCharOptions;
+    for (auto& opt : toolOptions)
+    {
+        constCharOptions.push_back(opt.c_str());
+    }
+
+    cl::ParseCommandLineOptions(constCharOptions.size(), constCharOptions.data());
+
     // Add a preprocessor definition to indicate we're doing TESLA parsing.
-    std::vector<const char*> args(argv, argv + argc);
-    args.push_back("-D");
-    args.push_back("__TESLA_ANALYSER__");
+    std::vector<std::string> compilationOptions = GetCompilationOptions(argc, argv);
+    compilationOptions.push_back("-D");
+    compilationOptions.push_back("__TESLA_ANALYSER__");
 
-    // Change argc and argv to refer to the vector's memory.
-    // The CompilationDatabase will modify these, so we shouldn't pass in
-    // args.data() directly.
-    argc = (int)args.size();
-    assert(((size_t)argc) == args.size()); // check for overflow
+    // Add recursive include directories.
+    std::vector<std::string> additionalIncludes;
+    for (auto& additionalIncludeDir : RecursiveIncludes)
+    {
+        auto folders = GetAllRecursiveFolders(additionalIncludeDir);
+        additionalIncludes.insert(additionalIncludes.end(), folders.begin(), folders.end());
+    }
 
-    argv = args.data();
+    for (auto& additionalInclude : additionalIncludes)
+    {
+        compilationOptions.push_back("-I");
+        compilationOptions.push_back(additionalInclude.c_str());
+    }
+
+    std::vector<const char*> constCharCompilationOptions;
+    for (auto& opt : compilationOptions)
+    {
+        constCharCompilationOptions.push_back(opt.c_str());
+    }
+
+    int compOptionsSize = constCharCompilationOptions.size();
+    assert(compOptionsSize == constCharCompilationOptions.size()); // Check for overflow.
 
     std::string errorMsg;
     std::unique_ptr<CompilationDatabase> Compilations(
-        FixedCompilationDatabase::loadFromCommandLine(argc, argv, errorMsg));
+        FixedCompilationDatabase::loadFromCommandLine(compOptionsSize, constCharCompilationOptions.data(), errorMsg, SourceRoot));
 
     if (!Compilations)
         panic(
             "Need compilation options, e.g. tesla-prepare -s ./src/ -o teslacache -- -I ../include");
-
-    cl::ParseCommandLineOptions(argc, argv);
 
     if (!is_directory(OutputDir))
     {
