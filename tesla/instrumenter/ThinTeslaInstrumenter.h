@@ -57,6 +57,7 @@ class ThinTeslaInstrumenter : public ThinTeslaEventVisitor, public llvm::ModuleP
     std::string GetFilenameFromPath(const std::string& path);
     std::set<std::string> GetFunctionsInstrumentedMoreThanOnce();
     std::set<std::string> CollectModuleFunctions(llvm::Module& M);
+    std::vector<llvm::CallInst*> GetAllCallsToFunction(llvm::Module& M, const std::string& functionName);
     bool IsFunctionInstrumentedMultipleTimes(const std::string& functionName)
     {
         return multipleInstrumentedFunctions.find(functionName) != multipleInstrumentedFunctions.end();

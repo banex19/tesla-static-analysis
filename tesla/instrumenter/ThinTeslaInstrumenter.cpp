@@ -224,36 +224,66 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
 {
     Function* function = M.getFunction(event.functionName);
 
-    if (function == nullptr || function->isDeclaration())
-        return;
-
-    Function* instrCheck = BuildInstrumentationCheck(M, assertion, event);
-
-    auto args = GetFunctionArguments(function);
-
-    std::vector<Value*> callArgs;
-    for (auto& param : event.params)
+    if (event.calleeInstrumentation)
     {
-        callArgs.push_back(args[param.index]);
-    }
+        if (function == nullptr || function->isDeclaration())
+            return;
 
-    if (!event.returnValue.exists) // Instrument at entry.
-    {
-        BasicBlock* entryBlock = &function->getEntryBlock();
-        IRBuilder<> builder{entryBlock->getFirstNonPHI()};
-        builder.CreateCall(instrCheck, callArgs);
-    }
-    else // Instrument every exit.
-    {
-        auto exits = GetEveryExit(function);
-        for (auto& exit : exits)
+        Function* instrCheck = BuildInstrumentationCheck(M, assertion, event);
+
+        auto args = GetFunctionArguments(function);
+
+        std::vector<Value*> callArgs;
+        for (auto& param : event.params)
         {
-            auto retVal = dyn_cast<ReturnInst>(exit->getTerminator())->getReturnValue();
-            assert(retVal != nullptr);
-            callArgs.push_back(retVal);
+            callArgs.push_back(args[param.index]);
+        }
 
-            IRBuilder<> builder{exit->getTerminator()};
+        if (!event.returnValue.exists) // Instrument at entry.
+        {
+            BasicBlock* entryBlock = &function->getEntryBlock();
+            IRBuilder<> builder{entryBlock->getFirstNonPHI()};
             builder.CreateCall(instrCheck, callArgs);
+        }
+        else // Instrument every exit.
+        {
+            auto exits = GetEveryExit(function);
+            for (auto& exit : exits)
+            {
+                auto retVal = dyn_cast<ReturnInst>(exit->getTerminator())->getReturnValue();
+                assert(retVal != nullptr);
+                callArgs.push_back(retVal);
+
+                IRBuilder<> builder{exit->getTerminator()};
+                builder.CreateCall(instrCheck, callArgs);
+            }
+        }
+    }
+    else // We must instrument every call to the event function.
+    {
+        Function* instrCheck = BuildInstrumentationCheck(M, assertion, event);
+
+        auto callInsts = GetAllCallsToFunction(M, event.functionName);
+
+        for (auto callInst : callInsts)
+        {
+            std::vector<Value*> callArgs;
+            for (auto& param : event.params)
+            {
+                callArgs.push_back(callInst->getArgOperand(param.index));
+            }
+
+            if (!event.returnValue.exists) // Instrument before call.
+            {
+                IRBuilder<> builder(callInst);
+                builder.CreateCall(instrCheck, callArgs);
+            }
+            else // Instrument after call.
+            {
+                callArgs.push_back(callInst);
+                IRBuilder<> builder{callInst->getNextNode()};
+                builder.CreateCall(instrCheck, callArgs);
+            }
         }
     }
 }
@@ -396,7 +426,7 @@ void ThinTeslaInstrumenter::UpdateEventsWithParametersThread(llvm::Module& M, Th
         builder.CreateCall(updateFunction, {automatonGlobal, TeslaTypes::GetSizeT(C, event->id), builder.CreateBitCast(dataArray, Type::getInt8PtrTy(C))});
     }
 
-   // OutFunction(function);
+    // OutFunction(function);
 }
 
 void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaAssertionSite& event)
@@ -483,6 +513,34 @@ void ThinTeslaInstrumenter::InstrumentInstruction(llvm::Module& M, llvm::Instruc
     }
 }
 
+std::vector<llvm::CallInst*> ThinTeslaInstrumenter::GetAllCallsToFunction(llvm::Module& M, const std::string& functionName)
+{
+    std::vector<llvm::CallInst*> calls;
+
+    auto functions = CollectModuleFunctions(M);
+
+    for (auto& fName : functions)
+    {
+        Function* f = M.getFunction(fName);
+        if (f != nullptr && !f->isDeclaration())
+        {
+            for (auto& block : *f)
+            {
+                for (auto& instr : block)
+                {
+                    CallInst* callInst = dyn_cast<CallInst>(&instr);
+                    if (callInst != nullptr && callInst->getCalledFunction()->getName() == functionName)
+                    {
+                        calls.push_back(callInst);
+                    }
+                }
+            }
+        }
+    }
+
+    return calls;
+}
+
 void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaFunction& event)
 {
     Function* function = M.getFunction(event.functionName);
@@ -508,26 +566,12 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
 
     if (!event.calleeInstrumentation) // We must instrument every call to the event function.
     {
-        auto functions = CollectModuleFunctions(M);
+        auto callInsts = GetAllCallsToFunction(M, event.functionName);
 
-        for (auto& fName : functions)
+        for (auto callInst : callInsts)
         {
-            Function* f = M.getFunction(fName);
-            if (f != nullptr && !f->isDeclaration())
-            {
-                for (auto& block : *f)
-                {
-                    for (auto& instr : block)
-                    {
-                        CallInst* callInst = dyn_cast<CallInst>(&instr);
-                        if (callInst != nullptr && callInst->getCalledFunction()->getName() == event.functionName)
-                        {
-                            IRBuilder<> builder(callInst);
-                            InstrumentInstruction(M, callInst, assertion, event);
-                        }
-                    }
-                }
-            }
+            IRBuilder<> builder(callInst);
+            InstrumentInstruction(M, callInst, assertion, event);
         }
     }
 }
