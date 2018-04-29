@@ -69,10 +69,19 @@ using namespace llvm::sys::fs;
 using namespace llvm::sys::path;
 using namespace tesla;
 
-cl::opt<std::string> SourceRoot(
-    "s",
-    cl::desc("<source root dir>"),
-    cl::Required);
+enum OnFileNotInDatabase
+{
+    NOT_SPECIFIED = 0,
+    ERROR = 1,
+    SKIP = 2,
+    COMPILE_WITH_DEFAULT = 3
+};
+
+cl::opt<std::string>
+    SourceRoot(
+        "s",
+        cl::desc("<source root dir>"),
+        cl::Required);
 
 cl::opt<std::string> OutputDir(
     "o",
@@ -87,10 +96,14 @@ cl::opt<std::string> CompilationDatabaseFile(
     "database",
     cl::desc("A file containing a compilation database in the format \"<filename> -- <compilation options>\""));
 
-cl::opt<bool> OnlyInDatabase(
-    "only-database",
-    cl::desc("Error if a file is not contained in the compilation database"),
-    cl::init(false));
+cl::opt<OnFileNotInDatabase> NotInDatabasePolicy(
+    "not-in-database",
+    cl::desc("What to do if a file is not contained in the compilation database"),
+    cl::values(
+        clEnumVal(ERROR, "Error and exit"),
+        clEnumVal(SKIP, "Skip file"),
+        clEnumVal(COMPILE_WITH_DEFAULT, "Compile with default compilation options (default)")),
+    cl::init(OnFileNotInDatabase::NOT_SPECIFIED));
 
 cl::opt<bool> Verbose(
     "v",
@@ -279,8 +292,13 @@ int main(int argc, const char** argv)
     if (CompilationDatabaseFile != "")
     {
         database = TeslaCompilationDatabase(CompilationDatabaseFile);
+
+        if (NotInDatabasePolicy == NOT_SPECIFIED)
+        {
+            NotInDatabasePolicy = COMPILE_WITH_DEFAULT;
+        }
     }
-    else if (OnlyInDatabase)
+    else if (NotInDatabasePolicy != NOT_SPECIFIED)
     {
         tesla::panic("Compilation database not specified");
     }
@@ -381,7 +399,7 @@ int main(int argc, const char** argv)
         {
             if (!database.IsEmpty())
             {
-                if (OnlyInDatabase)
+                if (NotInDatabasePolicy == ERROR)
                 {
                     tesla::panic("File " + filename + " is not in compilation database");
                 }
@@ -389,9 +407,12 @@ int main(int argc, const char** argv)
                     OutputWarning("File " + filename + " is not in compilation database");
             }
 
-            ClangTool Tool(*Compilations, std::vector<std::string>{filename});
+            if (NotInDatabasePolicy != SKIP)
+            {
+                ClangTool Tool(*Compilations, std::vector<std::string>{filename});
 
-            Tool.run(Factory.get());
+                Tool.run(Factory.get());
+            }
         }
 
         // Cache function names.
