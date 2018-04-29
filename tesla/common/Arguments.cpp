@@ -9,6 +9,7 @@
 #include "llvm/IR/IntrinsicInst.h"
 
 #include <llvm/Support/FileSystem.h>
+#include <llvm/Support/Path.h>
 
 using namespace llvm;
 using namespace llvm::sys::fs;
@@ -254,18 +255,6 @@ void tesla::ParseAssertionLocation(
         panic("unable to parse filename from TESLA assertion");
     }
 
-    llvm::SmallVector<char, 200> currentPath;
-    current_path(currentPath);
-
-    std::string fullPath;
-    for (size_t i = 0; i < currentPath.size(); ++i)
-    {
-        if (currentPath[i] == '\0')
-            break;
-
-        fullPath.push_back(currentPath[i]);
-    }
-
     // This is a hack - getAsString gives us a string with a null terminator
     // attached, but this gets implicitly removed when serialising. Therefore when
     // comparing an in-memory location with one loaded from disk, the comparison
@@ -276,7 +265,27 @@ void tesla::ParseAssertionLocation(
         fn = fn.substr(0, fn.size() - 1);
     }
 
-    fullPath = fullPath + "/" + fn;
+    std::string fullPath;
+
+    if (!llvm::sys::path::is_absolute(fullPath))
+    {
+        llvm::SmallVector<char, 200> currentPath;
+        current_path(currentPath);
+
+        for (size_t i = 0; i < currentPath.size(); ++i)
+        {
+            if (currentPath[i] == '\0')
+                break;
+
+            fullPath.push_back(currentPath[i]);
+        }
+
+        fullPath = fullPath + "/" + fn;
+    }
+    else
+    {
+        fullPath = fn;
+    }
 
     *Loc->mutable_filename() = fullPath;
 

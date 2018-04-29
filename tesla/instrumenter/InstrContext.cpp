@@ -38,6 +38,7 @@
 
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
+#include <llvm/Support/raw_ostream.h>
 
 #include <iostream>
 
@@ -176,13 +177,16 @@ Constant* InstrContext::BuildAutomatonDescription(const Automaton* A)
     //
     auto* Existing = M.getGlobalVariable(Name);
 
-    bool externalDeclaration = false;
+    if (Existing)
+        assert(!Existing->hasInitializer());
+
+    /* bool externalDeclaration = false;
 
     if (Existing)
         externalDeclaration = !Existing->hasDefinitiveInitializer();
 
     if (Existing && !externalDeclaration)
-        return Existing;
+        return Existing; */
 
     vector<Constant*> Transitions;
     vector<Constant*> EventDescriptions;
@@ -194,6 +198,8 @@ Constant* InstrContext::BuildAutomatonDescription(const Automaton* A)
         Transitions.push_back(BuildTransitions(Tr));
         EventDescriptions.push_back(ConstStr(Descrip));
     }
+
+    llvm::errs() << "Creating Automaton " << A->Name() << "\n";
 
     //
     // The members of a struct tesla_automaton are:
@@ -253,7 +259,8 @@ Constant* InstrContext::BuildAutomatonDescription(const Automaton* A)
     // If there is already a variable with the same name, it is an extern
     // declaration; replace it with this definition.
     //
-    if (Existing && externalDeclaration)
+  //  if (Existing && externalDeclaration)
+    if (Existing)
     {
         Existing->replaceAllUsesWith(Automaton);
         Existing->removeFromParent();
