@@ -94,18 +94,24 @@ std::string SanitizeFilename(const std::string& filename)
 
 std::string GetFullPath(const std::string& OutputDir, const std::string& filename)
 {
+    if (filename.find(OutputDir) == 0)
+        return filename;
+        
     return OutputDir + filename;
 }
 
 std::string GetRelativePath(const std::string& OutputDir, const std::string& filename)
 {
+    if (filename.find(OutputDir) == std::string::npos)
+        return filename;
+
     std::string rel = filename;
     return rel.erase(0, OutputDir.size());
 }
 
 void GetAllRecursiveFolders(const std::string& current, std::vector<std::string>& folders)
 {
-    folders.push_back(current);
+    bool containsHeaders = false;
 
     std::error_code err;
     directory_iterator it(current, err);
@@ -122,9 +128,20 @@ void GetAllRecursiveFolders(const std::string& current, std::vector<std::string>
         {
             GetAllRecursiveFolders(path, folders);
         }
+        else
+        {
+            if (path.size() >= 2)
+            {
+                if (path[path.size() - 1] == 'h' && path[path.size() - 2] == '.')
+                    containsHeaders = true;
+            }
+        }
 
         it.increment(err);
     }
+
+    // if (containsHeaders)
+    folders.push_back(current);
 }
 
 std::vector<std::string> GetAllRecursiveFolders(const std::string& base)

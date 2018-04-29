@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <iterator>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -45,6 +46,8 @@
 #include "DataStructures.h"
 #include "Debug.h"
 #include "PrepareAST.h"
+
+#include "CompilationDatabase.h"
 
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/FrontendActions.h>
@@ -80,6 +83,15 @@ cl::list<std::string> RecursiveIncludes(
     "I",
     cl::desc("Extra include directories (and all their subfolders recursively)"));
 
+cl::opt<std::string> CompilationDatabaseFile(
+    "database",
+    cl::desc("A file containing a compilation database in the format \"<filename> -- <compilation options>\""));
+
+cl::opt<bool> OnlyInDatabase(
+    "only-database",
+    cl::desc("Error if a file is not contained in the compilation database"),
+    cl::init(false));
+
 cl::opt<bool> Verbose(
     "v",
     cl::desc("Enable verbosity"),
@@ -105,6 +117,8 @@ cl::list<std::string> ExtraExceptions(
 
 std::vector<std::string> exceptions = {"cmake"};
 std::vector<std::string> extensions = {".cpp", ".c", ".cc"};
+
+TeslaCompilationDatabase database;
 
 void AddOrMerge(std::map<std::pair<std::string, std::string>, std::set<std::string>>& automatonFunctions, std::string filename,
                 std::string id, std::set<std::string> newFunctions)
@@ -146,6 +160,10 @@ void TraverseSourcesRec(const std::string& sourceRoot, std::unordered_map<std::s
         PanicIfError(err);
 
         std::string path = it->path();
+        SmallString<100> realPath;
+        real_path(path, realPath, true);
+        path = realPath.str();
+
         std::string lowercasePath = path;
         std::transform(lowercasePath.begin(), lowercasePath.end(), lowercasePath.begin(), ::tolower);
 
@@ -233,6 +251,8 @@ int main(int argc, const char** argv)
         additionalIncludes.insert(additionalIncludes.end(), folders.begin(), folders.end());
     }
 
+    // OutputAlways("Additional includes: " + StringFromVector(additionalIncludes, " - ") + "\n");
+
     for (auto& additionalInclude : additionalIncludes)
     {
         compilationOptions.push_back("-I");
@@ -250,11 +270,20 @@ int main(int argc, const char** argv)
 
     std::string errorMsg;
     std::unique_ptr<CompilationDatabase> Compilations(
-        FixedCompilationDatabase::loadFromCommandLine(compOptionsSize, constCharCompilationOptions.data(), errorMsg, SourceRoot));
+        FixedCompilationDatabase::loadFromCommandLine(compOptionsSize, constCharCompilationOptions.data(), errorMsg));
 
     if (!Compilations)
         panic(
             "Need compilation options, e.g. tesla-prepare -s ./src/ -o teslacache -- -I ../include");
+
+    if (CompilationDatabaseFile != "")
+    {
+        database = TeslaCompilationDatabase(CompilationDatabaseFile);
+    }
+    else if (OnlyInDatabase)
+    {
+        tesla::panic("Compilation database not specified");
+    }
 
     if (!is_directory(OutputDir))
     {
@@ -313,9 +342,57 @@ int main(int argc, const char** argv)
 
         std::unique_ptr<TeslaActionFactory> Factory(new TeslaActionFactory(data, OutputDir + SanitizeFilename("TESLA_" + filename)));
 
-        ClangTool Tool(*Compilations, std::vector<std::string>{filename});
+        if (!database.IsEmpty() && database.IsFileInDatabase(filename))
+        {
+            OutputVerbose("File " + filename + " in compilation database", Verbose);
 
-        Tool.run(Factory.get());
+            auto fileCompilationOptions = database.GetCompilationOptions(filename);
+
+            // Skip the "--", to avoid having two of them.
+            auto compOptionsBegin = compilationOptions.begin();
+            std::advance(compOptionsBegin, 1);
+
+            fileCompilationOptions.insert(fileCompilationOptions.end(), compOptionsBegin, compilationOptions.end());
+
+            std::vector<const char*> constCharCompilationOptions;
+            for (auto& opt : fileCompilationOptions)
+            {
+                constCharCompilationOptions.push_back(opt.c_str());
+            }
+
+            int compOptionsSize = constCharCompilationOptions.size();
+            assert(compOptionsSize == constCharCompilationOptions.size()); // Check for overflow.
+
+            //  OutputAlways("Compilation options: " + StringFromVector(constCharCompilationOptions, " "));
+
+            std::string errorMsg;
+            std::unique_ptr<CompilationDatabase> Compilations(
+                FixedCompilationDatabase::loadFromCommandLine(compOptionsSize, constCharCompilationOptions.data(), errorMsg));
+
+            if (!Compilations)
+                panic(
+                    "Error in compilation options");
+
+            ClangTool Tool(*Compilations, std::vector<std::string>{filename});
+
+            Tool.run(Factory.get());
+        }
+        else
+        {
+            if (!database.IsEmpty())
+            {
+                if (OnlyInDatabase)
+                {
+                    tesla::panic("File " + filename + " is not in compilation database");
+                }
+                else
+                    OutputWarning("File " + filename + " is not in compilation database");
+            }
+
+            ClangTool Tool(*Compilations, std::vector<std::string>{filename});
+
+            Tool.run(Factory.get());
+        }
 
         // Cache function names.
         uncached.functions.insert(data.definedFunctionNames.begin(), data.definedFunctionNames.end());
