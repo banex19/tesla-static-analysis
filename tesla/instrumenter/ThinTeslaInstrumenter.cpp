@@ -316,21 +316,60 @@ llvm::CallInst* ThinTeslaInstrumenter::GetTeslaAssertionInstr(llvm::Function* fu
     return nullptr;
 }
 
-llvm::Value* ThinTeslaInstrumenter::GetVariable(llvm::Function* function, const std::string& varName)
+llvm::Value* ThinTeslaInstrumenter::GetVariable(llvm::Function* function, ThinTeslaParameter& param, IRBuilder<>& builder)
 {
-    for (auto& arg : function->args())
-    {
-        if (arg.getName() == varName)
-            return &arg;
-    }
+    Value* value = nullptr;
+
+    std::string& varName = param.varName;
 
     for (auto& instr : function->getEntryBlock())
     {
         if (instr.getName() == varName)
-            return &instr;
+        {
+            value = &instr;
+            break;
+        }
     }
 
-    return nullptr;
+    if (value != nullptr)
+    {
+        for (auto& arg : function->args())
+        {
+            if (arg.getName() == varName)
+            {
+                value = &arg;
+                break;
+            }
+        }
+    }
+
+    if (value != nullptr && param.isIndirection)
+    {
+        StructType* structType = nullptr;
+
+        if (value->getType()->isPointerTy())
+        {
+            if (((PointerType*)value->getType())->getElementType()->isPointerTy())
+            {
+                value = builder.CreateLoad(value);
+            }
+
+            structType = dyn_cast<StructType>(((PointerType*)value->getType())->getElementType());
+        }
+
+        assert(structType != nullptr && "Base variable of indirection is not a struct");
+        assert(structType->getNumElements() > param.fieldIndex && "Type of base variable of indirection does not have enough fields");
+
+        value = builder.CreateStructGEP(structType, value, param.fieldIndex);
+        value = builder.CreateLoad(value);
+    }
+    else if (value != nullptr)
+    {
+        if (dyn_cast<AllocaInst>(value) != nullptr)
+            value = builder.CreateLoad(value);
+    }
+
+    return value;
 }
 
 void ThinTeslaInstrumenter::UpdateEventsWithParametersGlobal(llvm::Module& M, ThinTeslaAssertion& assertion, llvm::Instruction* insertPoint)
@@ -361,13 +400,8 @@ void ThinTeslaInstrumenter::UpdateEventsWithParametersGlobal(llvm::Module& M, Th
             if (param.isConstant)
                 continue;
 
-            Value* var = GetVariable(function, param.varName);
+            Value* var = GetVariable(function, param, builder);
             assert(var != nullptr && "Variable to match assertion has been optimized away by the compiler!");
-
-            if (dyn_cast<AllocaInst>(var) != nullptr)
-            {
-                var = builder.CreateLoad(var);
-            }
 
             builder.CreateStore(builder.CreateCast(TeslaTypes::GetCastToInteger(var->getType()), var, TeslaTypes::GetMatchType(C)),
                                 builder.CreateGEP(builder.CreateBitCast(matchArray, TeslaTypes::GetMatchType(C)->getPointerTo()),
@@ -409,13 +443,8 @@ void ThinTeslaInstrumenter::UpdateEventsWithParametersThread(llvm::Module& M, Th
             if (param.isConstant)
                 continue;
 
-            Value* var = GetVariable(function, param.varName);
+            Value* var = GetVariable(function, param, builder);
             assert(var != nullptr && "Variable to match assertion has been optimized away by the compiler!");
-
-            if (dyn_cast<AllocaInst>(var) != nullptr)
-            {
-                var = builder.CreateLoad(var);
-            }
 
             builder.CreateStore(builder.CreateCast(TeslaTypes::GetCastToInteger(var->getType()), var, TeslaTypes::GetMatchType(C)),
                                 builder.CreateGEP(dataArray, TeslaTypes::GetInt(C, 32, i)));

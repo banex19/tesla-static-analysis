@@ -38,9 +38,16 @@ struct ThinTeslaParameter
     {
     }
 
+    ThinTeslaParameter(size_t index, const std::string& varName, size_t fieldIndex)
+        : exists(true), isConstant(false), varName(varName), isIndirection(true), fieldIndex(fieldIndex), index(index)
+    {
+    }
+
     bool isConstant = false;
     size_t constantValue = 0;
     std::string varName = "";
+    bool isIndirection = false;
+    size_t fieldIndex = 0;
 
     bool exists = false;
 

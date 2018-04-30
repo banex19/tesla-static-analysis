@@ -187,7 +187,7 @@ void ThinTeslaAssertion::AddArgumentToParametricEvent(std::shared_ptr<ThinTeslaP
         return;
     }
 
-    if (arg.type() != Argument_Type_Constant && arg.type() != Argument_Type_Variable)
+    if (arg.type() != Argument_Type_Constant && arg.type() != Argument_Type_Variable && arg.type() != Argument_Type_Field)
     {
         llvm::errs() << "Argument type: " << arg.type() << "\n";
         assert(false && "Argument type not supported");
@@ -199,9 +199,13 @@ void ThinTeslaAssertion::AddArgumentToParametricEvent(std::shared_ptr<ThinTeslaP
     {
         param = ThinTeslaParameter(event->numTotalParams, arg.value());
     }
-    else
+    else if (arg.type() == Argument_Type_Variable)
     {
         param = ThinTeslaParameter(event->numTotalParams, arg.name());
+    }
+    else
+    {
+        param = ThinTeslaParameter(event->numTotalParams, arg.field().base().name(), arg.field().index());
     }
 
     if (!returnValue)

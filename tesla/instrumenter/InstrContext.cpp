@@ -199,8 +199,6 @@ Constant* InstrContext::BuildAutomatonDescription(const Automaton* A)
         EventDescriptions.push_back(ConstStr(Descrip));
     }
 
-    llvm::errs() << "Creating Automaton " << A->Name() << "\n";
-
     //
     // The members of a struct tesla_automaton are:
     //
