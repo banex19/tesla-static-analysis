@@ -18,7 +18,7 @@ include(cmake/CopyFiles.cmake)
 
 
 # Include LLVM configuration:
-find_package(LLVM 
+find_package(LLVM 6.0.0
   CONFIG REQUIRED
 )
 set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/tesla)
