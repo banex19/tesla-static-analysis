@@ -204,6 +204,7 @@ if(BUILD_DOCS)
   add_subdirectory(doc)
 endif()
 
+add_subdirectory(static-optimization)
 add_subdirectory(demos)
 add_subdirectory(include)
 add_subdirectory(libtesla)
