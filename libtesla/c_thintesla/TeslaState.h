@@ -45,6 +45,7 @@ typedef struct TeslaAutomatonFlags
 {
     uint8_t isDeterministic : 1;
     uint8_t isThreadLocal : 1;
+    uint8_t isLinked : 1;
 } TeslaAutomatonFlags;
 
 typedef struct TeslaAutomatonState

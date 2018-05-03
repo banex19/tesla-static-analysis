@@ -111,12 +111,20 @@ Function* TeslaTypes::GetEndAutomaton(Module& M)
     return (Function*)M.getOrInsertFunction("EndAutomaton", FunctionType::get(Type::getVoidTy(C),
                                                                               AutomatonTy->getPointerTo(), EventTy->getPointerTo()));
 }
+Function* TeslaTypes::GetEndLinkedAutomata(Module& M)
+{
+    auto& C = M.getContext();
+    Type* VoidPtrPtrTy = GetVoidPtrPtrTy(C);
+    return (Function*)M.getOrInsertFunction("EndLinkedAutomata", FunctionType::get(Type::getVoidTy(C),
+                                                                                   VoidPtrPtrTy, GetSizeTType(C)));
+}
 
 Function* TeslaTypes::GetUpdateEventWithData(Module& M)
 {
     auto& C = M.getContext();
     return (Function*)M.getOrInsertFunction("UpdateEventWithData", FunctionType::get(Type::getVoidTy(C),
-                                                                                    {AutomatonTy->getPointerTo(),
-                                                                                     GetSizeTType(C),
-                                                                                     Type::getInt8PtrTy(C)}, false));
+                                                                                     {AutomatonTy->getPointerTo(),
+                                                                                      GetSizeTType(C),
+                                                                                      Type::getInt8PtrTy(C)},
+                                                                                     false));
 }

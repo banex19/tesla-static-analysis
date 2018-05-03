@@ -11,6 +11,7 @@ void UpdateAutomatonDeterministicGeneric(TeslaAutomaton* automaton, TeslaEvent* 
 void VerifyAutomaton(TeslaAutomaton* automaton);
 void VerifyAfterAssertion(TeslaAutomaton* automaton, size_t i, TeslaTemporalTag lowerBound, TeslaTemporalTag upperBound);
 void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event);
+void EndLinkedAutomata(TeslaAutomaton** automata, size_t numAutomata);
 
 /* Per-thread specific */
 bool AreThreadKeysEqual(TeslaThreadKey first, TeslaThreadKey second);

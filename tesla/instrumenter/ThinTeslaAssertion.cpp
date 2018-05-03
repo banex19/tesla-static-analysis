@@ -19,61 +19,69 @@ std::vector<ThinTeslaEventPtr> GetOROptionalBlock(std::vector<ThinTeslaEventPtr>
     return block;
 }
 
-void ThinTeslaAssertion::BuildAssertion()
+void ThinTeslaAssertionBuilder::BuildAssertion()
 {
     isThreadLocal = desc->context() == tesla::AutomatonDescription_Context_ThreadLocal;
-    ConvertExp(automaton->beginning());
+
+    entryBound = &automaton->beginning();
     ConvertExp(desc->expression());
-    ConvertExp(automaton->end());
+    exitBound = &automaton->end();
 }
 
-void ThinTeslaAssertion::LinkEvents()
+void ThinTeslaAssertionBuilder::LinkEvents()
 {
-    bool beforeAssertion = true;
-    for (size_t i = 0; i < events.size() - 1; ++i)
+    for (auto& assertion : assertions)
     {
-        auto event = events[i];
-        auto next = events[i + 1];
-
-        if (event->IsAssertion())
-            beforeAssertion = false;
-
-        event->isBeforeAssertion = beforeAssertion;
-
-        if (next->isOR || next->isOptional)
+        bool beforeAssertion = true;
+        for (size_t i = 0; i < assertion->events.size() - 1; ++i)
         {
-            auto block = GetOROptionalBlock(events, i + 1);
+            auto event = assertion->events[i];
+            auto next = assertion->events[i + 1];
 
-            for (auto& orEvent : block)
+            if (event->IsAssertion())
+                beforeAssertion = false;
+
+            event->isBeforeAssertion = beforeAssertion;
+
+            if (next->isOR || next->isOptional)
             {
-                event->successors.push_back(orEvent);
-            }
+                auto block = GetOROptionalBlock(assertion->events, i + 1);
 
-            assert(i + 1 + block.size() < events.size());
-            auto firstNonOR = events[i + 1 + block.size()];
-            block.push_back(firstNonOR);
-
-            for (size_t k = 0; k < block.size(); ++k)
-            {
-                for (size_t n = k + 1; n < block.size(); ++n)
+                for (auto& orEvent : block)
                 {
-                    block[k]->successors.push_back(block[n]);
+                    event->successors.push_back(orEvent);
                 }
-            }
 
-            i = i + block.size() - 1;
-            continue;
-        }
-        else
-        {
-            event->successors.push_back(next);
+                assert(i + 1 + block.size() < assertion->events.size());
+                auto firstNonOR = assertion->events[i + 1 + block.size()];
+                block.push_back(firstNonOR);
+
+                for (size_t k = 0; k < block.size(); ++k)
+                {
+                    for (size_t n = k + 1; n < block.size(); ++n)
+                    {
+                        block[k]->successors.push_back(block[n]);
+                    }
+                }
+
+                i = i + block.size() - 1;
+                continue;
+            }
+            else
+            {
+                event->successors.push_back(next);
+            }
         }
     }
 }
 
-void ThinTeslaAssertion::ConvertExp(const Expression& exp)
+void ThinTeslaAssertionBuilder::ConvertExp(const Expression& exp)
 {
-    if (exp.type() == tesla::Expression_Type_SEQUENCE)
+    if (exp.type() == tesla::Expression_Type_NULL_EXPR)
+    {
+        return;
+    }
+    else if (exp.type() == tesla::Expression_Type_SEQUENCE)
     {
         for (const auto& subExp : exp.sequence().expression())
         {
@@ -92,28 +100,80 @@ void ThinTeslaAssertion::ConvertExp(const Expression& exp)
     {
         ConvertAssertionSite(exp.assertsite());
     }
+    else
+    {
+        assert(false && "Expression type not supported");
+    }
 }
 
-void ThinTeslaAssertion::ConvertBoolean(const BooleanExpr& exp)
+bool ThinTeslaAssertionBuilder::CheckBooleanSubexpressions(const BooleanExpr& exp)
+{
+    const auto& exps = exp.expression();
+    if (exps.size() < 2)
+        return false;
+
+    bool anyIsSequence = false;
+    for (const auto& exp : exps)
+    {
+        if (exp.type() == tesla::Expression_Type_SEQUENCE)
+        {
+            anyIsSequence = true;
+            break;
+        }
+    }
+
+    if (anyIsSequence) // If at least one subexpression is a sequence, then all must be sequences and this must be the top expression.
+    {
+        if (desc->expression().type() != Expression_Type_BOOLEAN_EXPR || desc->expression().booleanexpr() != exp)
+        {
+            return false;
+        }
+
+        for (const auto& exp : exps)
+        {
+            if (exp.type() != tesla::Expression_Type_SEQUENCE)
+                return false;
+        }
+
+        multipleAutomata = true;
+    }
+
+    return true;
+}
+
+void ThinTeslaAssertionBuilder::ConvertBoolean(const BooleanExpr& exp)
 {
     if (exp.operation() == tesla::BooleanExpr_Operation_BE_Or)
     {
-        assert(!isOR);
+        assert(!currentlyInOR);
 
-        isOR = true;
+        currentlyInOR = true;
+
+        if (!CheckBooleanSubexpressions(exp))
+        {
+            assert(false && "Boolean expression of invalid sub expressions");
+        }
+
+        if (multipleAutomata)
+            currentlyInOR = false;
 
         for (const auto& subExp : exp.expression())
         {
+            if (multipleAutomata)
+            {
+                AddAssertion();
+            }
+
             ConvertExp(subExp);
         }
 
-        isOR = false;
+        currentlyInOR = false;
     }
     else
         assert(false && "Boolean expression not supported");
 }
 
-void ThinTeslaAssertion::ConvertAssertionSite(const AssertionSite& site)
+void ThinTeslaAssertionBuilder::ConvertAssertionSite(const AssertionSite& site)
 {
     const auto& location = site.location();
 
@@ -127,7 +187,7 @@ void ThinTeslaAssertion::ConvertAssertionSite(const AssertionSite& site)
     assertionCounter = location.counter();
 }
 
-void ThinTeslaAssertion::ConvertFunction(const Expression& fun)
+void ThinTeslaAssertionBuilder::ConvertFunction(const Expression& fun)
 {
     const FunctionEvent& function = fun.function();
 
@@ -172,13 +232,10 @@ void ThinTeslaAssertion::ConvertFunction(const Expression& fun)
         AddEvent(event);
     }
 
-    if (fun.isoptional())
-        events[events.size() - 1]->isOptional = true;
-
     affectedFunctions.insert(function.function().name());
 }
 
-void ThinTeslaAssertion::AddArgumentToParametricEvent(std::shared_ptr<ThinTeslaParametricFunction> event, const tesla::Argument& arg, bool returnValue)
+void ThinTeslaAssertionBuilder::AddArgumentToParametricEvent(std::shared_ptr<ThinTeslaParametricFunction> event, const tesla::Argument& arg, bool returnValue)
 {
     if (arg.type() == Argument_Type_Any)
     {

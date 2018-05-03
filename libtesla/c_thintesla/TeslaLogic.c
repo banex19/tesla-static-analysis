@@ -67,6 +67,37 @@ const TeslaTemporalTag ONE = 1;
             return;                                \
     } while (0)
 
+#define GET_THREAD_AUTOMATON_AND_NULL(automaton)   \
+    do                                             \
+    {                                              \
+        automaton = GetThreadAutomaton(automaton); \
+                                                   \
+    } while (0)
+
+#define AUTOMATON_FAIL(automaton)          \
+    do                                     \
+    {                                      \
+        if (automaton->flags.isLinked)     \
+        {                                  \
+            TA_Reset(automaton);           \
+            return;                        \
+        }                                  \
+        else                               \
+            TeslaAssertionFail(automaton); \
+    } while (0)
+
+#define AUTOMATON_FAIL_MESSAGE(automaton, message)         \
+    do                                                     \
+    {                                                      \
+        if (automaton->flags.isLinked)                     \
+        {                                                  \
+            TA_Reset(automaton);                           \
+            return;                                        \
+        }                                                  \
+        else                                               \
+            TeslaAssertionFailMessage(automaton, message); \
+    } while (0)
+
 //#define PRINT_START
 //#define PRINT_TRANSITIONS
 //#define PRINT_VERIFICATION
@@ -490,18 +521,49 @@ void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event)
 
     if (automaton->state.reachedAssertion) // Only check automata that were in the assertion path.
     {
-        DEBUG_ASSERT(automaton->state.isActive);
-
+        DEBUG_ASSERT(automaton->flags.isLinked || automaton->state.isActive);
+ 
         UpdateAutomatonDeterministic(automaton, event);
 
         // If this automaton is not in a final event, the assertion has failed.
         if (!automaton->state.currentEvent->flags.isEnd)
         {
-            TeslaAssertionFail(automaton);
+            AUTOMATON_FAIL(automaton);
         }
     }
 
-    TA_Reset(automaton);
+    if (!automaton->flags.isLinked) // Linked automata will be reset later, not now.
+        TA_Reset(automaton);
+}
+
+void EndLinkedAutomata(TeslaAutomaton** automata, size_t numAutomata)
+{
+    // Only one automaton should have succeeded.
+    bool oneSucceeded = false;
+
+    for (size_t i = 0; i < numAutomata; ++i)
+    {
+        TeslaAutomaton* automaton = automata[i];
+
+        GET_THREAD_AUTOMATON_AND_NULL(automaton);
+
+        if (automaton == NULL || !automaton->state.isActive) // This automaton failed.
+        {
+            continue;
+        }
+
+        if (automaton->state.currentEvent->flags.isEnd) // This automaton succeeded.
+        {
+            if (oneSucceeded) // More than one succeeded.
+                TeslaAssertionFail(automaton);
+
+            oneSucceeded = true;
+            TA_Reset(automaton);
+        }
+    }
+
+    if (!oneSucceeded)
+        TeslaAssertionFail(automata[0]);
 }
 
 void DebugEvent(TeslaEvent* event)

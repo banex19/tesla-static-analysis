@@ -466,7 +466,6 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
 
     if (function != nullptr && !function->isDeclaration())
     {
-        assert(!event.IsInstrumented());
         assert(event.isDeterministic);
         assert(!event.IsStart() && !event.IsEnd());
 
@@ -490,9 +489,8 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
         IRBuilder<> builder(callInst);
         builder.CreateCall(updateAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event)});
 
-        callInst->eraseFromParent();
-
-        event.SetInstrumented();
+        if (!assertion.IsLinked() || (assertion.IsLinked() && assertion.IsLinkMaster()))
+            callInst->eraseFromParent();
     }
 }
 
@@ -512,7 +510,6 @@ void ThinTeslaInstrumenter::InstrumentInstruction(llvm::Module& M, llvm::Instruc
 {
     Function* updateAutomaton = TeslaTypes::GetUpdateAutomatonDeterministic(M);
     Function* startAutomaton = TeslaTypes::GetStartAutomaton(M);
-    Function* endAutomaton = TeslaTypes::GetEndAutomaton(M);
 
     GlobalVariable* global = GetEventGlobal(M, assertion, event);
 
@@ -534,7 +531,7 @@ void ThinTeslaInstrumenter::InstrumentInstruction(llvm::Module& M, llvm::Instruc
     }
     else if (event.IsEnd())
     {
-        builder.CreateCall(endAutomaton, {GetAutomatonGlobal(M, assertion), global});
+        InstrumentEndAutomaton(M, builder, assertion, event);
     }
     else
     {
@@ -576,8 +573,6 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
 
     if (function != nullptr && !function->isDeclaration() && event.calleeInstrumentation)
     {
-        assert(!event.IsInstrumented());
-
         if (event.isDeterministic)
         {
             if (event.IsEnd())
@@ -589,8 +584,6 @@ void ThinTeslaInstrumenter::InstrumentEvent(llvm::Module& M, ThinTeslaAssertion&
                 InstrumentInstruction(M, GetFirstInstruction(function), assertion, event);
             }
         }
-
-        event.SetInstrumented();
     }
 
     if (!event.calleeInstrumentation) // We must instrument every call to the event function.
@@ -629,7 +622,22 @@ void ThinTeslaInstrumenter::InstrumentEveryExit(llvm::Module& M, Function* funct
     for (auto exit : exits)
     {
         IRBuilder<> builder(exit->getTerminator());
-        builder.CreateCall(endAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event)});
+        InstrumentEndAutomaton(M, builder, assertion, event);
+    }
+}
+
+void ThinTeslaInstrumenter::InstrumentEndAutomaton(llvm::Module& M, llvm::IRBuilder<>& builder, ThinTeslaAssertion& assertion, ThinTeslaFunction& event)
+{
+    Function* endAutomaton = TeslaTypes::GetEndAutomaton(M);
+    Function* endLinkedAutomata = TeslaTypes::GetEndLinkedAutomata(M);
+
+    builder.CreateCall(endAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event)});
+
+    if (assertion.IsLinked() && assertion.IsLinkMaster())
+    {
+        builder.CreateCall(endLinkedAutomata,
+                           {ConstantExpr::getBitCast(GetLinkedAutomataArray(M, assertion), TeslaTypes::GetVoidPtrPtrTy(M.getContext())),
+                            TeslaTypes::GetSizeT(M.getContext(), assertion.linkedAssertions.size() + 1)});
     }
 }
 
@@ -770,6 +778,7 @@ GlobalVariable* ThinTeslaInstrumenter::GetAutomatonGlobal(llvm::Module& M, ThinT
     TeslaAutomatonFlags flags;
     flags.isDeterministic = assertion.isDeterministic;
     flags.isThreadLocal = assertion.isThreadLocal;
+    flags.isLinked = assertion.IsLinked();
     Constant* cFlags = ConstantStruct::get(TeslaTypes::AutomatonFlagsTy, TeslaTypes::GetInt(C, 8, *(uint8_t*)(&flags)));
 
     Constant* state = ConstantStruct::get(TeslaTypes::AutomatonStateTy,
@@ -791,6 +800,32 @@ GlobalVariable* ThinTeslaInstrumenter::GetAutomatonGlobal(llvm::Module& M, ThinT
     var->setConstant(false);
 
     return var;
+}
+
+GlobalVariable* ThinTeslaInstrumenter::GetLinkedAutomataArray(llvm::Module& M, ThinTeslaAssertion& linkMaster)
+{
+    std::string autID = GetAutomatonID(linkMaster) + "_links";
+    GlobalVariable* old = M.getGlobalVariable(autID);
+    if (old != nullptr)
+        return old;
+
+    LLVMContext& C = M.getContext();
+
+    ArrayType* arrayTy = ArrayType::get(TeslaTypes::AutomatonTy->getPointerTo(), linkMaster.linkedAssertions.size() + 1);
+
+    std::vector<Constant*> automata;
+    automata.push_back(GetAutomatonGlobal(M, linkMaster));
+
+    for (size_t i = 0; i < linkMaster.linkedAssertions.size(); ++i)
+    {
+        Constant* automaton = GetAutomatonGlobal(M, *linkMaster.linkedAssertions[i]);
+        automata.push_back(automaton);
+    }
+
+    Constant* array = ConstantArray::get(arrayTy, automata);
+    GlobalVariable* global = CreateGlobalVariable(M, arrayTy, array, autID, THREAD_LOCAL);
+
+    return global;
 }
 
 GlobalVariable* ThinTeslaInstrumenter::GetStringGlobal(llvm::Module& M, const std::string& str, const std::string& globalID)
@@ -827,13 +862,13 @@ GlobalVariable* ThinTeslaInstrumenter::CreateGlobalVariable(llvm::Module& M, llv
 std::string ThinTeslaInstrumenter::GetAutomatonID(ThinTeslaAssertion& assertion)
 {
     return assertion.assertionFilename + "_" + std::to_string(assertion.assertionLine) + "_" +
-           std::to_string(assertion.assertionCounter);
+           std::to_string(assertion.assertionCounter) + "_" + std::to_string(assertion.id);
 }
 
 std::string ThinTeslaInstrumenter::GetEventID(ThinTeslaAssertion& assertion, ThinTeslaEvent& event)
 {
     return assertion.assertionFilename + "_" + std::to_string(assertion.assertionLine) + "_" +
-           std::to_string(assertion.assertionCounter) + "_" + std::to_string(event.id);
+           std::to_string(assertion.assertionCounter) + "_" + std::to_string(assertion.id) + "_" + std::to_string(event.id);
 }
 
 std::string ThinTeslaInstrumenter::GetFilenameFromPath(const std::string& path)

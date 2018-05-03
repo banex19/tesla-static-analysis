@@ -16,7 +16,11 @@ class ThinTeslaInstrumenter : public ThinTeslaEventVisitor, public llvm::ModuleP
     {
         for (auto& automaton : manifest.RootAutomata())
         {
-            assertions.push_back(ThinTeslaAssertion{manifest, automaton});
+            ThinTeslaAssertionBuilder builder{manifest, automaton};
+            for (auto& assertion : builder.GetAssertions())
+            {
+                assertions.push_back(*assertion);
+            }
         }
     }
 
@@ -32,6 +36,7 @@ class ThinTeslaInstrumenter : public ThinTeslaEventVisitor, public llvm::ModuleP
     void InstrumentEvent(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaParametricFunction& event);
     void InstrumentEvent(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaAssertionSite& event);
     void InstrumentEveryExit(llvm::Module& M, llvm::Function* function, ThinTeslaAssertion& assertion, ThinTeslaFunction& event);
+    void InstrumentEndAutomaton(llvm::Module& M, llvm::IRBuilder<>& builder, ThinTeslaAssertion& assertion, ThinTeslaFunction& event);
     void InstrumentInstruction(llvm::Module& M, llvm::Instruction* instr, ThinTeslaAssertion& assertion, ThinTeslaFunction& event);
     void UpdateEventsWithParametersGlobal(llvm::Module& M, ThinTeslaAssertion& assertion, llvm::Instruction* insertPoint);
     void UpdateEventsWithParametersThread(llvm::Module& M, ThinTeslaAssertion& assertion, llvm::Instruction* insertPoint);
@@ -48,6 +53,7 @@ class ThinTeslaInstrumenter : public ThinTeslaEventVisitor, public llvm::ModuleP
     GlobalVariable* GetEventsArray(llvm::Module& M, ThinTeslaAssertion& assertion);
     GlobalVariable* GetEventsStateArray(llvm::Module& M, ThinTeslaAssertion& assertion);
     GlobalVariable* GetAutomatonGlobal(llvm::Module& M, ThinTeslaAssertion& assertion);
+    GlobalVariable* GetLinkedAutomataArray(llvm::Module& M, ThinTeslaAssertion& linkMaster);
     GlobalVariable* GetStringGlobal(llvm::Module& M, const std::string& str, const std::string& globalID);
     GlobalVariable* CreateGlobalVariable(llvm::Module& M, llvm::Type* type, llvm::Constant* initializer, const std::string& name, bool threadLocal = false);
 

@@ -47,6 +47,11 @@ class TeslaTypes
         return ConstantInt::get(GetBoolType(C), val);
     }
 
+    static Type* GetVoidPtrPtrTy(LLVMContext& C)
+    {
+        return PointerType::getUnqual(PointerType::getUnqual(IntegerType::getInt8Ty(C)));
+    }
+
     static llvm::Instruction::CastOps GetCastToInteger(Type* type)
     {
         if (type->isIntegerTy())
@@ -67,6 +72,7 @@ class TeslaTypes
     static Function* GetUpdateAutomaton(Module& M);
     static Function* GetStartAutomaton(Module& M);
     static Function* GetEndAutomaton(Module& M);
+    static Function* GetEndLinkedAutomata(Module& M);
     static Function* GetUpdateEventWithData(Module& M);
 
     static StructType* GetStructType(StringRef name, ArrayRef<Type*> fields, Module& M, bool packed = true);

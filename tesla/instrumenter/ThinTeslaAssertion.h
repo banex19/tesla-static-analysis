@@ -67,8 +67,7 @@ class ThinTeslaEventVisitor
 #define VISITOR_ACCEPT                                                                                  \
     virtual void Accept(llvm::Module& M, ThinTeslaAssertion& assertion, ThinTeslaEventVisitor& visitor) \
     {                                                                                                   \
-        if (true || !IsInstrumented())                                                                  \
-            visitor.InstrumentEvent(M, assertion, *this);                                               \
+        visitor.InstrumentEvent(M, assertion, *this);                                                   \
     }
 
 class ThinTeslaEvent
@@ -82,9 +81,6 @@ class ThinTeslaEvent
     bool isOR = false;
     bool isDeterministic = true;
     bool isBeforeAssertion = false;
-
-    bool IsInstrumented() { return alreadyInstrumented; }
-    void SetInstrumented() { alreadyInstrumented = true; }
 
     bool IsEnd() { return successors.size() == 0; }
     bool IsStart() { return id == 0; }
@@ -100,9 +96,6 @@ class ThinTeslaEvent
 
     size_t id = 0;
     std::vector<std::shared_ptr<ThinTeslaEvent>> successors;
-
-  private:
-    bool alreadyInstrumented = false;
 };
 
 using ThinTeslaEventPtr = std::shared_ptr<ThinTeslaEvent>;
@@ -192,57 +185,159 @@ class ThinTeslaParametricFunction : public ThinTeslaFunction
     size_t numTotalParams = 0;
 };
 
-class ThinTeslaAssertion
+struct ThinTeslaAssertion
 {
   public:
-    ThinTeslaAssertion(const tesla::Manifest& manifest, const tesla::Usage* automaton) : automaton(automaton)
+    ThinTeslaAssertion(size_t id)
+        : id(id)
+    {
+    }
+
+    bool IsLinked()
+    {
+        return linkedAssertions.size() > 0;
+    }
+
+    bool IsLinkMaster()
+    {
+        return linkMaster;
+    }
+
+    std::vector<ThinTeslaEventPtr> events;
+    size_t id = 0;
+
+    bool isDeterministic = true;
+    bool isThreadLocal = false;
+
+    std::string assertionFilename;
+    size_t assertionLine, assertionCounter;
+    std::set<std::string> affectedFunctions;
+
+    std::vector<std::shared_ptr<ThinTeslaAssertion>> linkedAssertions;
+    bool linkMaster = false;
+};
+
+using AssertionPtr = std::shared_ptr<ThinTeslaAssertion>;
+
+class ThinTeslaAssertionBuilder
+{
+  public:
+    ThinTeslaAssertionBuilder(const tesla::Manifest& manifest, const tesla::Usage* automaton) : automaton(automaton)
     {
         const tesla::Automaton* aut = manifest.FindAutomatonSafe(automaton->identifier());
         assert(aut != nullptr);
         desc = &aut->assertion;
 
         BuildAssertion();
+
+        assert(assertions.size() > 0);
+
+        if (assertions.size() > 1)
+        {
+            assert(multipleAutomata);
+        }
+
+        SetAssertionGlobalProperties();
         LinkEvents();
         DetermineProperties();
     }
 
-    std::vector<ThinTeslaEventPtr> events;
-    std::string assertionFilename;
-    size_t assertionLine, assertionCounter;
-    std::set<std::string> affectedFunctions;
+    std::vector<AssertionPtr> GetAssertions()
+    {
+        return assertions;
+    }
 
-    bool isDeterministic = true;
-    bool isThreadLocal = false;
+    bool HasMultipleAssertions()
+    {
+        return assertions.size() > 1;
+    }
 
   private:
     void BuildAssertion();
 
+    void AddAssertion()
+    {
+        AssertionPtr assertion = std::make_shared<ThinTeslaAssertion>(assertions.size());
+        assertions.push_back(assertion);
+        currentAssertion = assertion;
+
+        ConvertExp(*entryBound);
+    }
+
+    void SetAssertionGlobalProperties()
+    {
+        for (auto assertion : assertions)
+        {
+            assertion->isThreadLocal = isThreadLocal;
+            assertion->assertionFilename = assertionFilename;
+            assertion->assertionLine = assertionLine;
+            assertion->assertionCounter = assertionCounter;
+            assertion->affectedFunctions = affectedFunctions;
+
+            currentAssertion = assertion;
+            ConvertExp(*exitBound);
+        }
+
+        for (size_t i = 0; i < assertions.size(); ++i)
+        {
+            if (i == assertions.size() - 1)
+            {
+                assertions[i]->linkMaster = true;
+            }
+
+            for (size_t j = 0; j < assertions.size(); ++j)
+            {
+                if (i != j)
+                {
+                    assertions[i]->linkedAssertions.push_back(assertions[j]);
+                }
+            }
+        }
+    }
+
     void DetermineProperties()
     {
-        bool beforeAssertion = true;
-        for (auto event : events)
+        for (auto assertion : assertions)
         {
-            if (event->IsAssertion())
-                beforeAssertion = false;
 
-            event->isBeforeAssertion = beforeAssertion;
-
-            if (!event->isDeterministic)
+            bool beforeAssertion = true;
+            for (auto event : assertion->events)
             {
-                isDeterministic = false;
+                if (event->IsAssertion())
+                    beforeAssertion = false;
+
+                event->isBeforeAssertion = beforeAssertion;
+
+                if (!event->isDeterministic)
+                {
+                    assertion->isDeterministic = false;
+                }
             }
+
+            if (beforeAssertion)
+                assert(false && "Automaton does not contain an assertion site");
         }
     }
 
     void AddEvent(ThinTeslaEventPtr event)
     {
-        if (isOR)
+        if (currentAssertion == nullptr)
+            AddAssertion();
+
+        if (currentlyInOR)
         {
             event->isOR = true;
         }
 
-        events.push_back(event);
-        events[events.size() - 1]->id = events.size() - 1;
+        currentAssertion->events.push_back(event);
+        currentAssertion->events[currentAssertion->events.size() - 1]->id = currentAssertion->events.size() - 1;
+    }
+
+    void SetLastEventOptional()
+    {
+        assert(currentAssertion != nullptr && currentAssertion->events.size() > 0);
+
+        currentAssertion->events[currentAssertion->events.size() - 1]->isOptional = true;
     }
 
     void LinkEvents();
@@ -251,11 +346,24 @@ class ThinTeslaAssertion
     void ConvertBoolean(const tesla::BooleanExpr& exp);
     void ConvertAssertionSite(const tesla::AssertionSite& site);
     void ConvertFunction(const tesla::Expression& fun);
+    bool CheckBooleanSubexpressions(const tesla::BooleanExpr& exp);
 
     void AddArgumentToParametricEvent(std::shared_ptr<ThinTeslaParametricFunction> event, const tesla::Argument& arg, bool returnValue = false);
 
     const tesla::Usage* automaton;
     const tesla::AutomatonDescription* desc = nullptr;
 
-    bool isOR = false;
+    bool currentlyInOR = false;
+
+    std::vector<AssertionPtr> assertions;
+    AssertionPtr currentAssertion = nullptr;
+
+    bool multipleAutomata = false;
+    const tesla::Expression* entryBound = nullptr;
+    const tesla::Expression* exitBound = nullptr;
+
+    bool isThreadLocal = false;
+    std::string assertionFilename;
+    size_t assertionLine, assertionCounter;
+    std::set<std::string> affectedFunctions;
 };
