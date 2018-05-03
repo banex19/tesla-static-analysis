@@ -98,6 +98,18 @@ const TeslaTemporalTag ONE = 1;
             TeslaAssertionFailMessage(automaton, message); \
     } while (0)
 
+#define AUTOMATON_FAIL_MESSAGE_FALSE(automaton, message)   \
+    do                                                     \
+    {                                                      \
+        if (automaton->flags.isLinked)                     \
+        {                                                  \
+            TA_Reset(automaton);                           \
+            return false;                                  \
+        }                                                  \
+        else                                               \
+            TeslaAssertionFailMessage(automaton, message); \
+    } while (0)
+
 //#define PRINT_START
 //#define PRINT_TRANSITIONS
 //#define PRINT_VERIFICATION
@@ -268,10 +280,7 @@ void UpdateAutomatonDeterministicGeneric(TeslaAutomaton* automaton, TeslaEvent* 
     if (!automaton->state.isActive)
         return;
 
-    if (automaton->state.currentEvent == NULL && automaton->state.isActive)
-    {
-        TeslaAssertionFail(automaton);
-    }
+    assert(automaton->state.currentEvent != NULL);
 
 tryagain:
     if (automaton->state.currentEvent == event) // Double event is an error. Reset the automaton to the first event and retry.
@@ -347,7 +356,7 @@ tryagain:
 
         if (!foundSuccessor)
         {
-            TeslaAssertionFail(automaton);
+            AUTOMATON_FAIL(automaton);
         }
 
         if (!automaton->flags.isDeterministic)
@@ -357,7 +366,7 @@ tryagain:
     }
 }
 
-void VerifyORBlock(TeslaAutomaton* automaton, size_t* i, TeslaTemporalTag* lowerBound, TeslaTemporalTag* upperBound)
+bool VerifyORBlock(TeslaAutomaton* automaton, size_t* i, TeslaTemporalTag* lowerBound, TeslaTemporalTag* upperBound)
 {
     size_t localIndex = *i;
 
@@ -382,14 +391,14 @@ void VerifyORBlock(TeslaAutomaton* automaton, size_t* i, TeslaTemporalTag* lower
         if (!event->flags.isOR)
         {
             if (!atLeastOnceinOR)
-                TeslaAssertionFailMessage(automaton, "No event in OR block has occurred");
+                AUTOMATON_FAIL_MESSAGE_FALSE(automaton, "No event in OR block has occurred");
 
             if (*lowerBound == INVALID_TAG)
                 *lowerBound = max;
 
             *upperBound = max;
             *i = localIndex - 1;
-            return;
+            return true;
         }
 
         TeslaTemporalTag tag = event->flags.isDeterministic ? (TeslaTemporalTag)((uintptr_t)state->store)
@@ -410,7 +419,7 @@ void VerifyORBlock(TeslaAutomaton* automaton, size_t* i, TeslaTemporalTag* lower
             continue;
 
         if (validMask && (!IsPowerOfTwo(validMask & tag) || (validMask & tag) < *upperBound))
-            TeslaAssertionFailMessage(automaton, "OR event occurred multiple times");
+            AUTOMATON_FAIL_MESSAGE_FALSE(automaton, "OR event occurred multiple times");
 
         TeslaTemporalTag bound = ONE << LeftmostOne(tag);
 
@@ -420,6 +429,8 @@ void VerifyORBlock(TeslaAutomaton* automaton, size_t* i, TeslaTemporalTag* lower
         if (bound < min)
             min = bound;
     }
+
+    assert(false);
 }
 
 void VerifyAutomaton(TeslaAutomaton* automaton)
@@ -445,7 +456,9 @@ void VerifyAutomaton(TeslaAutomaton* automaton)
 
         if (event->flags.isOR)
         {
-            VerifyORBlock(automaton, &i, &lowerBound, &upperBound);
+            if (!VerifyORBlock(automaton, &i, &lowerBound, &upperBound))
+                return;
+
             continue;
         }
 
@@ -464,12 +477,12 @@ void VerifyAutomaton(TeslaAutomaton* automaton)
 
         if (tag == INVALID_TAG)
         {
-            TeslaAssertionFailMessage(automaton, "Required event didn't occur");
+            AUTOMATON_FAIL_MESSAGE(automaton, "Required event didn't occur");
         }
 
         if (tag < upperBound)
         {
-            TeslaAssertionFailMessage(automaton, "Event occurred in the past");
+            AUTOMATON_FAIL_MESSAGE(automaton, "Event occurred in the past");
         }
 
         upperBound = ONE << LeftmostOne(tag);
@@ -479,7 +492,7 @@ void VerifyAutomaton(TeslaAutomaton* automaton)
 
         if ((MaskBetweenExclUpper(upperBound, lowerBound) & tag) != 0)
         {
-            TeslaAssertionFailMessage(automaton, "Multiple events of the same type occurred");
+            AUTOMATON_FAIL_MESSAGE(automaton, "Multiple events of the same type occurred");
         }
     }
 }
@@ -510,7 +523,7 @@ void VerifyAfterAssertion(TeslaAutomaton* automaton, size_t i, TeslaTemporalTag 
 
         if (tag != INVALID_TAG && tag >= lowerBound)
         {
-            TeslaAssertionFailMessage(automaton, "Event after assertion happened before assertion");
+            AUTOMATON_FAIL_MESSAGE(automaton, "Event after assertion happened before assertion");
         }
     }
 }
@@ -522,7 +535,7 @@ void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event)
     if (automaton->state.reachedAssertion) // Only check automata that were in the assertion path.
     {
         DEBUG_ASSERT(automaton->flags.isLinked || automaton->state.isActive);
- 
+
         UpdateAutomatonDeterministic(automaton, event);
 
         // If this automaton is not in a final event, the assertion has failed.
