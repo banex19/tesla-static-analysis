@@ -331,7 +331,7 @@ llvm::Value* ThinTeslaInstrumenter::GetVariable(llvm::Function* function, ThinTe
         }
     }
 
-    if (value != nullptr)
+    if (value == nullptr)
     {
         for (auto& arg : function->args())
         {
