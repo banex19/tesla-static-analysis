@@ -257,7 +257,7 @@ Constant* InstrContext::BuildAutomatonDescription(const Automaton* A)
     // If there is already a variable with the same name, it is an extern
     // declaration; replace it with this definition.
     //
-  //  if (Existing && externalDeclaration)
+    //  if (Existing && externalDeclaration)
     if (Existing)
     {
         Existing->replaceAllUsesWith(Automaton);

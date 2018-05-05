@@ -82,30 +82,27 @@ bool Manifest::HasInstrumentation() const
 
 const Automaton* Manifest::FindAutomaton(const Identifier& ID) const
 {
-    const std::string& filenameToFind = ID.location().filename();
-    const auto counterToFind = ID.location().counter();
-    const auto lineToFind = ID.location().line();
-
-    for (auto& automaton : Automata)
+    auto i = Automata.find(ID);
+    if (i == Automata.end())
     {
+        const std::string& filenameToFind = ID.location().filename();
+        const auto counterToFind = ID.location().counter();
+        const auto lineToFind = ID.location().line();
 
-        const std::string& filename = automaton.first.location().filename();
-        const auto counter = automaton.first.location().counter();
-        const auto line = automaton.first.location().line();
+        for (auto& automaton : Automata)
+        {
+            const std::string& filename = automaton.first.location().filename();
+            const auto counter = automaton.first.location().counter();
+            const auto line = automaton.first.location().line();
 
-        if (ID == automaton.first || (counterToFind == counter && lineToFind == line 
-      //  && filenameToFind.find(filename) != std::string::npos
-        ))
-            return automaton.second;
+            if (ID == automaton.first || (counterToFind == counter && lineToFind == line && filenameToFind.find(filename) != std::string::npos))
+                return automaton.second;
+        }
+
+        panic("TESLA manifest does not contain assertion " + ShortName(ID));
     }
 
-    panic("TESLA manifest does not contain assertion " + ShortName(ID));
-
-    /* auto i = Automata.find(ID);
-  if (i == Automata.end())
-    panic("TESLA manifest does not contain assertion " + ShortName(ID));
-
-  return i->second; */
+    return i->second;
 }
 
 const Automaton* Manifest::FindAutomaton(const Location& Loc) const
