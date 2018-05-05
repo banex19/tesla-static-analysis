@@ -173,9 +173,7 @@ void TraverseSourcesRec(const std::string& sourceRoot, std::unordered_map<std::s
         PanicIfError(err);
 
         std::string path = it->path();
-        SmallString<100> realPath;
-        real_path(path, realPath, true);
-        path = realPath.str();
+        std::string fullPath = GetRealPath(path);
 
         std::string lowercasePath = path;
         std::transform(lowercasePath.begin(), lowercasePath.end(), lowercasePath.begin(), ::tolower);
@@ -210,13 +208,14 @@ void TraverseSourcesRec(const std::string& sourceRoot, std::unordered_map<std::s
                         //    OutputVerbose("Found file " + path + " which is already cached and up-to-date", Verbose);
                         cached[path].upToDate = true;
                         cached[path].stillExisting = true;
+                        cached[path].fullPath = fullPath;
                     }
                     else
                     {
                         if (cached.find(path) != cached.end())
                             cached[path].stillExisting = true;
 
-                        uncached.push_back({path, timestamp, false, true});
+                        uncached.push_back({path, fullPath, timestamp, false, true});
                         OutputVerbose("Found file " + path + " with timestamp " + std::to_string(timestamp) + " which is not cached and will be updated", Verbose);
                     }
                 }
@@ -235,6 +234,79 @@ std::vector<TimestampedFile> TraverseSources(const std::string& sourceRoot, std:
     std::vector<TimestampedFile> uncached;
     TraverseSourcesRec(sourceRoot, cached, uncached);
     return uncached;
+}
+
+void AnalyseFile(const std::string& filename, const std::string& fullPath, const std::vector<std::string>& compilationOptions, CollectedData& data)
+{
+    std::unique_ptr<TeslaActionFactory> Factory(new TeslaActionFactory(data, OutputDir + SanitizeFilename("TESLA_" + filename)));
+
+    if (!database.IsEmpty() && database.IsFileInDatabase(fullPath))
+    {
+        OutputVerbose("File " + fullPath + " in compilation database", Verbose);
+
+        auto fileCompilationOptions = database.GetCompilationOptions(fullPath);
+
+        // Skip the "--", to avoid having two of them.
+        auto compOptionsBegin = compilationOptions.begin();
+        std::advance(compOptionsBegin, 1);
+
+        fileCompilationOptions.insert(fileCompilationOptions.end(), compOptionsBegin, compilationOptions.end());
+
+        std::vector<const char*> constCharCompilationOptions;
+        for (auto& opt : fileCompilationOptions)
+        {
+            constCharCompilationOptions.push_back(opt.c_str());
+        }
+
+        int compOptionsSize = constCharCompilationOptions.size();
+        assert(compOptionsSize == constCharCompilationOptions.size()); // Check for overflow.
+
+        //  OutputAlways("Compilation options: " + StringFromVector(constCharCompilationOptions, " "));
+
+        std::string errorMsg;
+        std::unique_ptr<CompilationDatabase> Compilations(
+            FixedCompilationDatabase::loadFromCommandLine(compOptionsSize, constCharCompilationOptions.data(), errorMsg));
+
+        if (!Compilations)
+            panic(
+                "Error in compilation options");
+
+        ClangTool Tool(*Compilations, std::vector<std::string>{fullPath});
+
+        Tool.run(Factory.get());
+    }
+    else
+    {
+        if (!database.IsEmpty())
+        {
+            if (NotInDatabasePolicy == ERROR)
+            {
+                tesla::panic("File " + filename + " is not in compilation database");
+            }
+            else
+                OutputWarning("File " + filename + " is not in compilation database");
+        }
+
+        if (NotInDatabasePolicy != SKIP)
+        {
+            std::vector<const char*> constCharCompilationOptions;
+            for (auto& opt : compilationOptions)
+            {
+                constCharCompilationOptions.push_back(opt.c_str());
+            }
+
+            int compOptionsSize = constCharCompilationOptions.size();
+            assert(compOptionsSize == constCharCompilationOptions.size()); // Check for overflow.
+
+            std::string errorMsg;
+            std::unique_ptr<CompilationDatabase> Compilations(
+                FixedCompilationDatabase::loadFromCommandLine(compOptionsSize, constCharCompilationOptions.data(), errorMsg));
+
+            ClangTool Tool(*Compilations, std::vector<std::string>{filename});
+
+            Tool.run(Factory.get());
+        }
+    }
 }
 
 int main(int argc, const char** argv)
@@ -271,23 +343,6 @@ int main(int argc, const char** argv)
         compilationOptions.push_back("-I");
         compilationOptions.push_back(additionalInclude.c_str());
     }
-
-    std::vector<const char*> constCharCompilationOptions;
-    for (auto& opt : compilationOptions)
-    {
-        constCharCompilationOptions.push_back(opt.c_str());
-    }
-
-    int compOptionsSize = constCharCompilationOptions.size();
-    assert(compOptionsSize == constCharCompilationOptions.size()); // Check for overflow.
-
-    std::string errorMsg;
-    std::unique_ptr<CompilationDatabase> Compilations(
-        FixedCompilationDatabase::loadFromCommandLine(compOptionsSize, constCharCompilationOptions.data(), errorMsg));
-
-    if (!Compilations)
-        panic(
-            "Need compilation options, e.g. tesla-prepare -s ./src/ -o teslacache -- -I ../include");
 
     if (CompilationDatabaseFile != "")
     {
@@ -353,67 +408,13 @@ int main(int argc, const char** argv)
     for (auto& uncached : uncachedFiles)
     {
         auto filename = uncached.filename;
+        auto fullPath = uncached.fullPath;
 
         uncachedFilenames[filename] = true;
 
         CollectedData data{result};
 
-        std::unique_ptr<TeslaActionFactory> Factory(new TeslaActionFactory(data, OutputDir + SanitizeFilename("TESLA_" + filename)));
-
-        if (!database.IsEmpty() && database.IsFileInDatabase(filename))
-        {
-            OutputVerbose("File " + filename + " in compilation database", Verbose);
-
-            auto fileCompilationOptions = database.GetCompilationOptions(filename);
-
-            // Skip the "--", to avoid having two of them.
-            auto compOptionsBegin = compilationOptions.begin();
-            std::advance(compOptionsBegin, 1);
-
-            fileCompilationOptions.insert(fileCompilationOptions.end(), compOptionsBegin, compilationOptions.end());
-
-            std::vector<const char*> constCharCompilationOptions;
-            for (auto& opt : fileCompilationOptions)
-            {
-                constCharCompilationOptions.push_back(opt.c_str());
-            }
-
-            int compOptionsSize = constCharCompilationOptions.size();
-            assert(compOptionsSize == constCharCompilationOptions.size()); // Check for overflow.
-
-            //  OutputAlways("Compilation options: " + StringFromVector(constCharCompilationOptions, " "));
-
-            std::string errorMsg;
-            std::unique_ptr<CompilationDatabase> Compilations(
-                FixedCompilationDatabase::loadFromCommandLine(compOptionsSize, constCharCompilationOptions.data(), errorMsg));
-
-            if (!Compilations)
-                panic(
-                    "Error in compilation options");
-
-            ClangTool Tool(*Compilations, std::vector<std::string>{filename});
-
-            Tool.run(Factory.get());
-        }
-        else
-        {
-            if (!database.IsEmpty())
-            {
-                if (NotInDatabasePolicy == ERROR)
-                {
-                    tesla::panic("File " + filename + " is not in compilation database");
-                }
-                else
-                    OutputWarning("File " + filename + " is not in compilation database");
-            }
-
-            if (NotInDatabasePolicy != SKIP)
-            {
-                ClangTool Tool(*Compilations, std::vector<std::string>{filename});
-
-                Tool.run(Factory.get());
-            }
-        }
+        AnalyseFile(filename, fullPath, compilationOptions, data);
 
         // Cache function names.
         uncached.functions.insert(data.definedFunctionNames.begin(), data.definedFunctionNames.end());
@@ -480,11 +481,7 @@ int main(int argc, const char** argv)
     {
         CollectedData data{result};
 
-        std::unique_ptr<TeslaActionFactory> Factory(new TeslaActionFactory(data, OutputDir + SanitizeFilename("TESLA_" + a.first)));
-
-        ClangTool Tool(*Compilations, std::vector<std::string>{a.first});
-
-        Tool.run(Factory.get());
+        AnalyseFile(a.first, GetRealPath(a.first), compilationOptions, data);
     }
 
     // Output automata.

@@ -22,6 +22,7 @@ std::string StringFromSet(const std::set<std::string>& s, const std::string& sep
 std::string SanitizeFilename(const std::string& filename);
 std::string GetFullPath(const std::string& OutputDir, const std::string& filename);
 std::string GetRelativePath(const std::string& OutputDir, const std::string& filename);
+std::string GetRealPath(const std::string& filename);
 std::vector<std::string> GetAllRecursiveFolders(const std::string& base);
 
 std::vector<std::string> GetToolCommandLineOptions(int argc, const char** argv);

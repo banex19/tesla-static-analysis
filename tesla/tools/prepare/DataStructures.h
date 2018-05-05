@@ -8,6 +8,7 @@
 struct TimestampedFile
 {
     std::string filename;
+    std::string fullPath;
     size_t timestamp;
     bool upToDate = false;
     bool stillExisting = false;

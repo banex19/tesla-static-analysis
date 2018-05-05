@@ -96,7 +96,7 @@ std::string GetFullPath(const std::string& OutputDir, const std::string& filenam
 {
     if (filename.find(OutputDir) == 0)
         return filename;
-        
+
     return OutputDir + filename;
 }
 
@@ -107,6 +107,13 @@ std::string GetRelativePath(const std::string& OutputDir, const std::string& fil
 
     std::string rel = filename;
     return rel.erase(0, OutputDir.size());
+}
+
+std::string GetRealPath(const std::string& filename)
+{
+    SmallString<100> realPath;
+    real_path(filename, realPath, true);
+    return realPath.str();
 }
 
 void GetAllRecursiveFolders(const std::string& current, std::vector<std::string>& folders)

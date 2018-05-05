@@ -53,8 +53,9 @@ std::unordered_map<std::string, TimestampedFile> FileCache::ReadCachedData(bool 
         }
 
         sourceFile = GetFullPath(BaseDir, sourceFile);
+        std::string absolutePath = GetRealPath(sourceFile);
 
-        cachedFiles[sourceFile] = {sourceFile, timestamp, false, false, functions};
+        cachedFiles[sourceFile] = {sourceFile, absolutePath, timestamp, false, false, functions};
     }
 
     file.close();
