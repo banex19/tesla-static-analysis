@@ -9,13 +9,14 @@ void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data);
 void UpdateAutomatonDeterministic(TeslaAutomaton* automaton, TeslaEvent* event);
 void UpdateAutomatonDeterministicGeneric(TeslaAutomaton* automaton, TeslaEvent* event, bool updateTag);
 void VerifyAutomaton(TeslaAutomaton* automaton);
+bool VerifyORBlock(TeslaAutomaton* automaton, size_t* i, TeslaTemporalTag* lowerBound, TeslaTemporalTag* upperBound);
 void VerifyAfterAssertion(TeslaAutomaton* automaton, size_t i, TeslaTemporalTag lowerBound, TeslaTemporalTag upperBound);
 void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event);
 void EndLinkedAutomata(TeslaAutomaton** automata, size_t numAutomata);
 
 /* Per-thread specific */
 bool AreThreadKeysEqual(TeslaThreadKey first, TeslaThreadKey second);
-TeslaThreadKey GetThreadKey();
+TeslaThreadKey GetThreadKey(void);
 TeslaAutomaton* GetThreadAutomaton(TeslaAutomaton* automaton);
 TeslaAutomaton* GetThreadAutomatonKey(TeslaThreadKey key, TeslaAutomaton* automaton);
 TeslaAutomaton* GetThreadAutomatonAndLast(TeslaThreadKey key, TeslaAutomaton* automaton, TeslaAutomaton** lastInChain);

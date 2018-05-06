@@ -3,8 +3,12 @@
 #include "TeslaMalloc.h"
 #include "TeslaUtils.h"
 
-//#define ENABLE_THREAD_DEBUG
+#ifdef _KERNEL
+#include <sys/proc.h>
+#endif
 
+//#define ENABLE_THREAD_DEBUG
+void DebugThread(const char* message);
 void DebugThread(const char* message)
 {
 #ifdef ENABLE_THREAD_DEBUG
@@ -103,7 +107,7 @@ TeslaAutomaton* ForkAutomaton(TeslaAutomaton* base)
     TeslaAutomaton* automaton = NULL;
 
 retrysearch:
-    key;
+    (void)key;
     TeslaAutomaton* lastInChain = NULL;
     TeslaAutomaton* existing = GetThreadAutomatonAndLast(key, base, &lastInChain);
     if (existing != NULL)
@@ -127,7 +131,7 @@ retrysearch:
     }
 
 tryappendagain:
-    key;
+    (void)key;
 
     if (automaton == NULL)
     {
@@ -172,7 +176,6 @@ tryappendagain:
     DebugThread("Trying to fork new automaton");
 
     // Atomically append to chain.
-    TeslaAutomaton* nullPtr = NULL;
     if (!__sync_bool_compare_and_swap(&lastInChain->next, NULL, automaton))
         goto tryappendagain;
 

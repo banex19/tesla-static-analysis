@@ -5,6 +5,8 @@ _Static_assert(TESLA_STATIC_STORAGE_SIZE > 0, "Invalid static storage size");
 char STATIC_STORAGE[TESLA_STATIC_STORAGE_SIZE];
 char* currentPtr = STATIC_STORAGE;
 
+
+bool ThereIsEnoughSpace(char* ptr, size_t size);
 bool ThereIsEnoughSpace(char* ptr, size_t size)
 {
     return (ptr + size) <= (STATIC_STORAGE + TESLA_STATIC_STORAGE_SIZE);

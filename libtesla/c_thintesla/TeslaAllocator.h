@@ -19,7 +19,7 @@ typedef struct TeslaAllocator
 
 EXTERN_C
 
-size_t TeslaAllocator_GetHeaderSize();
+size_t TeslaAllocator_GetHeaderSize(void);
 uint64_t* TeslaAllocator_GetShardHeader(uint8_t* shard);
 
 size_t TeslaAllocator_GetBlockSize(TeslaAllocator* allocator);

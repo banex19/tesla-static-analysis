@@ -79,7 +79,7 @@ bool TeslaHT_InsertInternal(TeslaHT* hashtable, uint64_t tag, void* data, bool a
             return false;
     }
 
-    auto hash = Hash64(data, hashtable->dataSize);
+    uint64_t hash = Hash64(data, hashtable->dataSize);
 
     size_t bucketIndex = hash % hashtable->capacity;
 
@@ -126,7 +126,7 @@ uint64_t TeslaHT_LookupTag(TeslaHT* hashtable, void* data)
 
 BucketHeader* TeslaHT_LookupTagPtr(TeslaHT* hashtable, void* data)
 {
-    auto hash = Hash64(data, hashtable->dataSize);
+    uint64_t hash = Hash64(data, hashtable->dataSize);
 
     size_t bucketIndex = hash % hashtable->capacity;
 

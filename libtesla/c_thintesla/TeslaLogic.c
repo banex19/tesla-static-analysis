@@ -23,6 +23,8 @@ volatile size_t useless_var = 0;
         (byte & 0x02 ? '1' : '0'), \
         (byte & 0x01 ? '1' : '0')
 
+void printBits(size_t const size, void* ptr);
+
 void printBits(size_t const size, void* ptr)
 {
     unsigned char* b = (unsigned char*)ptr;
@@ -37,7 +39,7 @@ void printBits(size_t const size, void* ptr)
             printf("%u", byte);
         }
     }
-    puts("");
+    printf("\n");
 }
 
 const size_t NO_SUCC = SIZE_MAX;
@@ -241,7 +243,7 @@ void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data)
 
     if (state->store != NULL && state->store->type != TESLA_STORE_INVALID)
     {
-        bool insert = TeslaStore_Insert(state->store, automaton->state.currentTemporalTag, data);
+        /* bool insert = */ TeslaStore_Insert(state->store, automaton->state.currentTemporalTag, data);
     }
 
     if (event->id > current->id && succ == NO_SUCC)
@@ -431,6 +433,7 @@ bool VerifyORBlock(TeslaAutomaton* automaton, size_t* i, TeslaTemporalTag* lower
     }
 
     assert(false);
+    return false;
 }
 
 void VerifyAutomaton(TeslaAutomaton* automaton)
@@ -582,7 +585,7 @@ void EndLinkedAutomata(TeslaAutomaton** automata, size_t numAutomata)
 void DebugEvent(TeslaEvent* event)
 {
 #ifndef _KERNEL
-    printf("Event %d (%p) - " BYTE_TO_BINARY_PATTERN " flags - %d successors\n", event->id, event,
+    printf("Event %lu (%p) - " BYTE_TO_BINARY_PATTERN " flags - %lu successors\n", event->id, event,
            BYTE_TO_BINARY(*((uint8_t*)&event->flags)), event->numSuccessors);
 #endif
 }
@@ -590,7 +593,7 @@ void DebugEvent(TeslaEvent* event)
 void DebugAutomaton(TeslaAutomaton* automaton)
 {
 #ifndef _KERNEL
-    printf("Automaton %s (thread local: %s) - Address %p (events %p) - Temporal tag: %llu\n", automaton->name, automaton->flags.isThreadLocal ? "true" : "false",
+    printf("Automaton %s (thread local: %s) - Address %p (events %p) - Temporal tag: %lu\n", automaton->name, automaton->flags.isThreadLocal ? "true" : "false",
            automaton, automaton->events, automaton->state.currentTemporalTag);
     for (size_t i = 0; i < automaton->numEvents; ++i)
     {
@@ -606,10 +609,10 @@ void DebugMatchArray(TeslaAutomaton* automaton, TeslaEvent* event)
     {
         TeslaEventState* state = &automaton->eventStates[event->id];
 
-        size_t* data = state->matchData;
+        size_t* data = (size_t*)state->matchData;
         for (size_t i = 0; i < event->matchDataSize; ++i)
         {
-            printf("Event %d (%p - match array %p) - match[%d] = %llu\n", event->id, state->matchData, event, i, data[i]);
+            printf("Event %lu (%p - match array %p) - match[%lu] = %lu\n", event->id, state->matchData, event, i, data[i]);
         }
     }
 }

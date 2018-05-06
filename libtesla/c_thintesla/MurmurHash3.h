@@ -20,7 +20,11 @@ typedef unsigned __int64 uint64_t;
 
 #else	// defined(_MSC_VER)
 
+#ifndef _KERNEL
 #include <stdint.h>
+#else
+#include <sys/stdint.h>
+#endif
 
 #endif // !defined(_MSC_VER)
 

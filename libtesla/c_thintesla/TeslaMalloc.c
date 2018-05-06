@@ -8,7 +8,7 @@ bool cleanupRegistered = false;
 
 void reportMemoryStats()
 {
-    printf("Total memory allocated (bytes): %llu\n", totalAllocated);
+    printf("Total memory allocated (bytes): %lu\n", totalAllocated);
 }
 #endif
 
@@ -31,11 +31,9 @@ void* TeslaMalloc(size_t size)
 #endif
     if (data == NULL)
         data = malloc(size);
-    return data;
-
-#else
-    return NULL;
 #endif
+
+    return data;
 }
 
 void* TeslaMallocZero(size_t size)
@@ -52,10 +50,9 @@ void* TeslaMallocZero(size_t size)
         data = TeslaMalloc(size);
         memset(data, 0, size);
     }
-    return data;
-#else
-    return data;
 #endif
+
+    return data;
 }
 
 void TeslaFree(void* ptr)

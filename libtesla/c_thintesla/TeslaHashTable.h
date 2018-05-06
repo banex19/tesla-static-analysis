@@ -30,7 +30,7 @@ bool TeslaHT_InsertInternal(TeslaHT* hashtable, uint64_t tag, void* data, bool a
 uint64_t TeslaHT_LookupTag(TeslaHT* hashtable, void* data);
 BucketHeader* TeslaHT_LookupTagPtr(TeslaHT* hashtable, void* data);
 
-size_t TeslaHT_GetHeaderSize();
+size_t TeslaHT_GetHeaderSize(void);
 size_t TeslaHT_GetTableSize(TeslaHT* hashtable);
 uint8_t* TeslaHT_GetBucket(TeslaHT* hashtable, size_t index);
 

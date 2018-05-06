@@ -19,7 +19,7 @@ bool TeslaVector_Resize(TeslaVector* vector, size_t newCapacity)
     if (newData != NULL && vector->size > 0)
     {
         memcpy(newData, vector->data, vector->elemSize * vector->size);
-        free(vector->data);
+        TeslaFree(vector->data);
     }
     else if (newData == NULL)
     {

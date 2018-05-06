@@ -1,5 +1,4 @@
 #include "TeslaAllocator.h"
-#include <string.h>
 
 static const size_t SHARD_NUM_ELEMS = 16;
 static const uint64_t BITMAP_MASK = 0xFFFF000000000000;

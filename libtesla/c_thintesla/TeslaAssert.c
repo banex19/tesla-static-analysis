@@ -1,5 +1,4 @@
 #include "TeslaAssert.h"
-#include <string.h>
 
 void TeslaWarning(const char* warning)
 {

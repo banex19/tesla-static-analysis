@@ -2,7 +2,7 @@
 
 #include "TeslaHashTable.h"
 #include "TeslaTypes.h"
-#include "ThinTesla.h"
+#include "TeslaMalloc.h"
 
 typedef enum
 {

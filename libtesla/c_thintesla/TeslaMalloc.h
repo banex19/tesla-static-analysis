@@ -12,3 +12,6 @@ void TeslaFree(void* ptr);
 #endif
 
 void* TeslaMallocStatic(size_t size);
+
+
+void reportMemoryStats(void);
