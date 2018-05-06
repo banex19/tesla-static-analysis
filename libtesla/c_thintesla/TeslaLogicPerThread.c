@@ -19,7 +19,12 @@ bool AreThreadKeysEqual(TeslaThreadKey first, TeslaThreadKey second)
 
 TeslaThreadKey GetThreadKey()
 {
+#ifdef _KERNEL
+    TeslaThreadKey key = (TeslaThreadKey)curthread->td_tid;
+#else
     TeslaThreadKey key = (TeslaThreadKey)pthread_self();
+#endif
+
     DEBUG_ASSERT(key != INVALID_THREAD_KEY);
 
     return key;

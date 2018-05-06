@@ -14,6 +14,12 @@ void reportMemoryStats()
 
 void* TeslaMalloc(size_t size)
 {
+#ifdef TESLA_USE_STATIC_STORAGE
+    void* data = TeslaMallocStatic(size);
+#else
+    void* data = NULL;
+#endif
+
 #ifndef _KERNEL
 #ifdef TRACK_TOTAL_ALLOC
     if (!cleanupRegistered)
@@ -23,7 +29,10 @@ void* TeslaMalloc(size_t size)
     }
     totalAllocated += size;
 #endif
-    return malloc(size);
+    if (data == NULL)
+        data = malloc(size);
+    return data;
+
 #else
     return NULL;
 #endif
@@ -31,12 +40,21 @@ void* TeslaMalloc(size_t size)
 
 void* TeslaMallocZero(size_t size)
 {
+#ifdef TESLA_USE_STATIC_STORAGE
+    void* data = TeslaMallocStatic(size);
+#else
+    void* data = NULL;
+#endif
+
 #ifndef _KERNEL
-    void* data = TeslaMalloc(size);
-    memset(data, 0, size);
+    if (data == NULL)
+    {
+        data = TeslaMalloc(size);
+        memset(data, 0, size);
+    }
     return data;
 #else
-    return NULL;
+    return data;
 #endif
 }
 

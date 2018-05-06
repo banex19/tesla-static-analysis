@@ -58,8 +58,6 @@ typedef struct TeslaAutomatonState
     bool reachedAssertion;
 } TeslaAutomatonState;
 
-typedef size_t TeslaThreadKey;
-#define INVALID_THREAD_KEY ((TeslaThreadKey)-1)
 
 typedef struct TeslaAutomaton
 {
