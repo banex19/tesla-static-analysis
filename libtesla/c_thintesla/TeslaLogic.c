@@ -118,15 +118,26 @@ const TeslaTemporalTag ONE = 1;
 
 void StartAutomaton(TeslaAutomaton* automaton)
 {
+#ifndef _KERNEL
     WASTE_TIME(1);
+#endif
 
     DEBUG_ASSERT(automaton != NULL);
 
     if (automaton->flags.isThreadLocal)
     {
-        automaton = ForkAutomaton(automaton);
+        TeslaAutomaton* base = automaton;
+        automaton = ForkAutomaton(base);
         if (automaton == NULL)
             return;
+
+        if (automaton->state.isActive) // Leftover automaton.
+        {
+            TA_Reset(automaton);
+            automaton = ForkAutomaton(base);
+            if (automaton == NULL)
+                return;
+        }
     }
 
     DEBUG_ASSERT(!automaton->state.isActive);
@@ -353,12 +364,13 @@ tryagain:
 
     if (event->flags.isAssertion)
     {
+      //  printf("[%lu] Automaton %s reached assertion\n", automaton->threadKey, automaton->name);
         if (automaton->state.reachedAssertion)
             TeslaAssertionFailMessage(automaton, "Assertion site reached multiple times");
 
         if (!foundSuccessor)
         {
-            AUTOMATON_FAIL(automaton);
+            AUTOMATON_FAIL_MESSAGE(automaton, "Assertion site didn't cause a transition");
         }
 
         if (!automaton->flags.isDeterministic)

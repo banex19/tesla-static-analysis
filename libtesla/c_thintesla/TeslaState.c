@@ -27,6 +27,8 @@ void TA_Reset(TeslaAutomaton* automaton)
         }
     }
 
+ //   printf("[%lu] Resetting automaton %p\n",  automaton->threadKey, automaton);
+
     // Signal this automaton can be reused.
     automaton->threadKey = INVALID_THREAD_KEY;
 }

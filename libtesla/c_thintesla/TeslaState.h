@@ -53,9 +53,9 @@ typedef struct TeslaAutomatonState
     TeslaTemporalTag currentTemporalTag;
     TeslaEvent* currentEvent;
     TeslaEvent* lastEvent;
-    bool isCorrect;
-    bool isActive;
-    bool reachedAssertion;
+    int32_t isCorrect;
+    int32_t isActive;
+    int32_t reachedAssertion;
 } TeslaAutomatonState;
 
 
@@ -72,6 +72,10 @@ typedef struct TeslaAutomaton
     TeslaThreadKey threadKey;
     struct TeslaAutomaton* next;
 } TeslaAutomaton;
+
+_Static_assert(sizeof(TeslaAutomaton) == 96, "Invalid size");
+_Static_assert(offsetof(TeslaAutomaton, numEvents) == 16, "Invalid size");
+_Static_assert(offsetof(TeslaAutomaton, next) == 88, "Invalid size");
 
 void TA_Reset(TeslaAutomaton* automaton);
 

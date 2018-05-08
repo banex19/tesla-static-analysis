@@ -401,7 +401,11 @@ void ThinTeslaInstrumenter::UpdateEventsWithParametersGlobal(llvm::Module& M, Th
                 continue;
 
             Value* var = GetVariable(function, param, builder);
-            assert(var != nullptr && "Variable to match assertion has been optimized away by the compiler!");
+            if (var == nullptr)
+            {
+                llvm::errs() << "Variable " << param.varName << " cannot be found (assertion " << GetAutomatonID(assertion) << ")\n";
+                assert(var != nullptr && "Variable to match assertion has been optimized away by the compiler!");
+            }
 
             builder.CreateStore(builder.CreateCast(TeslaTypes::GetCastToInteger(var->getType()), var, TeslaTypes::GetMatchType(C)),
                                 builder.CreateGEP(builder.CreateBitCast(matchArray, TeslaTypes::GetMatchType(C)->getPointerTo()),
@@ -444,7 +448,11 @@ void ThinTeslaInstrumenter::UpdateEventsWithParametersThread(llvm::Module& M, Th
                 continue;
 
             Value* var = GetVariable(function, param, builder);
-            assert(var != nullptr && "Variable to match assertion has been optimized away by the compiler!");
+            if (var == nullptr)
+            {
+                llvm::errs() << "Variable " << param.varName << " cannot be found (assertion " << GetAutomatonID(assertion) << ")\n";
+                assert(var != nullptr && "Variable to match assertion has been optimized away by the compiler!");
+            }
 
             builder.CreateStore(builder.CreateCast(TeslaTypes::GetCastToInteger(var->getType()), var, TeslaTypes::GetMatchType(C)),
                                 builder.CreateGEP(dataArray, TeslaTypes::GetInt(C, 32, i)));
@@ -868,7 +876,7 @@ std::string ThinTeslaInstrumenter::GetAutomatonID(ThinTeslaAssertion& assertion)
 std::string ThinTeslaInstrumenter::GetEventID(ThinTeslaAssertion& assertion, ThinTeslaEvent& event)
 {
     return assertion.assertionFilename + "_" + std::to_string(assertion.assertionLine) + "_" +
-           std::to_string(assertion.assertionCounter) + "_" + std::to_string(assertion.id) + "_" + std::to_string(event.id);
+           std::to_string(assertion.assertionCounter) + "_" + std::to_string(assertion.id) + "E" + std::to_string(event.id);
 }
 
 std::string ThinTeslaInstrumenter::GetFilenameFromPath(const std::string& path)

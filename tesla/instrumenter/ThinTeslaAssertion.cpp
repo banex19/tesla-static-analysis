@@ -54,6 +54,12 @@ void ThinTeslaAssertionBuilder::LinkEvents()
 
                 assert(i + 1 + block.size() < assertion->events.size());
                 auto firstNonOR = assertion->events[i + 1 + block.size()];
+
+                if (next->isOptional) // If this is an optional block, we could skip it entirely.
+                {
+                    event->successors.push_back(firstNonOR);
+                }
+
                 block.push_back(firstNonOR);
 
                 for (size_t k = 0; k < block.size(); ++k)
@@ -231,6 +237,9 @@ void ThinTeslaAssertionBuilder::ConvertFunction(const Expression& fun)
 
         AddEvent(event);
     }
+
+    if (fun.isoptional())
+        SetLastEventOptional();
 
     affectedFunctions.insert(function.function().name());
 }

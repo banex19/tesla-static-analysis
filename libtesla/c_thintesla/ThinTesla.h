@@ -24,7 +24,8 @@
 #include <sys/types.h>
 #include <sys/systm.h>
 
-#define assert(...) KASSERT(__VA_ARGS__, "ThinTESLA assert")
+//#define assert(...) KASSERT(__VA_ARGS__, "ThinTESLA assert")
+#define assert(x) do { if (!(x)) { panic("ThinTESLA Assert failed");} } while (0)
 #endif
 
 #ifndef __cplusplus
@@ -36,7 +37,7 @@ typedef enum
     false,
     true
 } bool;
-_Static_assert(sizeof(bool) == 4, "Bool enum not int");
+_Static_assert(sizeof(bool) == sizeof(int), "Bool enum not int");
 #pragma options align = reset
 #endif
 #endif
@@ -49,6 +50,12 @@ _Static_assert(sizeof(bool) == 4, "Bool enum not int");
 #else
 #define EXTERN_C
 #define EXTERN_C_END
+#endif
+
+#ifdef _KERNEL
+#ifdef NDEBUG
+#define RELEASE
+#endif
 #endif
 
 #ifndef RELEASE

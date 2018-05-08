@@ -1,5 +1,7 @@
 #include "ThinTeslaTypes.h"
 
+#include "llvm/IR/DataLayout.h"
+
 #ifdef TESLA_PACK_STRUCTS
 const bool TESLA_STRUCTS_PACKED = true;
 #else
@@ -76,10 +78,13 @@ void TeslaTypes::PopulateAutomatonTy(Module& M)
     PointerType* EventPtrTy = PointerType::getUnqual(EventTy);
 
     AutomatonFlagsTy = GetStructType("TeslaAutomatonFlags", {Int8Ty}, M, TESLA_STRUCTS_PACKED);
-    AutomatonStateTy = GetStructType("TeslaAutomatonState", {SizeTTy, EventPtrTy, EventPtrTy, BoolTy, BoolTy, BoolTy}, M, TESLA_STRUCTS_PACKED);
+    AutomatonStateTy = GetStructType("TeslaAutomatonState", {SizeTTy, EventPtrTy, EventPtrTy, Int32Ty, Int32Ty, Int32Ty}, M, TESLA_STRUCTS_PACKED);
     AutomatonTy = GetStructType("TeslaAutomaton",
                                 {VoidPtrPtrTy, AutomatonFlagsTy, SizeTTy, VoidPtrTy, AutomatonStateTy, EventStateTy->getPointerTo(), SizeTTy, VoidPtrTy},
                                 M, TESLA_STRUCTS_PACKED);
+
+    DataLayout dataLayout {&M};
+    assert(dataLayout.getTypeStoreSize(AutomatonTy) == sizeof(TeslaAutomaton));
 }
 
 Function* TeslaTypes::GetUpdateAutomatonDeterministic(Module& M)

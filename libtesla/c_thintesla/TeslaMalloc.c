@@ -32,7 +32,7 @@ void* TeslaMalloc(size_t size)
     if (data == NULL)
         data = malloc(size);
 #endif
-
+    assert(data != NULL);
     return data;
 }
 
@@ -51,7 +51,7 @@ void* TeslaMallocZero(size_t size)
         memset(data, 0, size);
     }
 #endif
-
+    assert(data != NULL);
     return data;
 }
 

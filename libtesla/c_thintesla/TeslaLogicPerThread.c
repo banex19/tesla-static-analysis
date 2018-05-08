@@ -12,9 +12,11 @@ void DebugThread(const char* message);
 void DebugThread(const char* message)
 {
 #ifdef ENABLE_THREAD_DEBUG
-    printf("[%llu] %s\n", GetThreadKey(), message);
+    printf("[%lu] %s\n", GetThreadKey(), message);
 #endif
 }
+
+void* BAD_VALUE = (void*)0xFFFFFFFFFFFFFFFF;
 
 bool AreThreadKeysEqual(TeslaThreadKey first, TeslaThreadKey second)
 {
@@ -24,7 +26,7 @@ bool AreThreadKeysEqual(TeslaThreadKey first, TeslaThreadKey second)
 TeslaThreadKey GetThreadKey()
 {
 #ifdef _KERNEL
-    TeslaThreadKey key = (TeslaThreadKey)curthread->td_tid;
+    TeslaThreadKey key = (TeslaThreadKey)(curthread->td_tid);
 #else
     TeslaThreadKey key = (TeslaThreadKey)pthread_self();
 #endif
@@ -55,21 +57,11 @@ TeslaAutomaton* GetThreadAutomatonAndLast(TeslaThreadKey key, TeslaAutomaton* au
         automaton = automaton->next;
     }
 
-    if (automaton != NULL)
-        threadAutomaton = automaton;
+    threadAutomaton = automaton;
 
     assert(*lastInChain != NULL);
 
     return threadAutomaton;
-}
-
-TeslaAutomaton* GetThreadAutomaton(TeslaAutomaton* automaton)
-{
-    if (!automaton->flags.isThreadLocal)
-        return automaton;
-
-    TeslaAutomaton* last = NULL;
-    return GetThreadAutomatonAndLast(GetThreadKey(), automaton, &last);
 }
 
 TeslaAutomaton* GetThreadAutomatonKey(TeslaThreadKey key, TeslaAutomaton* automaton)
@@ -79,6 +71,11 @@ TeslaAutomaton* GetThreadAutomatonKey(TeslaThreadKey key, TeslaAutomaton* automa
 
     TeslaAutomaton* last = NULL;
     return GetThreadAutomatonAndLast(key, automaton, &last);
+}
+
+TeslaAutomaton* GetThreadAutomaton(TeslaAutomaton* automaton)
+{
+    return GetThreadAutomatonKey(GetThreadKey(), automaton);
 }
 
 void FreeAutomaton(TeslaAutomaton* automaton)
@@ -112,7 +109,6 @@ retrysearch:
     TeslaAutomaton* existing = GetThreadAutomatonAndLast(key, base, &lastInChain);
     if (existing != NULL)
     {
-        FreeAutomaton(automaton);
         return existing;
     }
     else
@@ -120,14 +116,14 @@ retrysearch:
         existing = GetUnusedAutomaton(base);
         if (existing != NULL)
         {
-            if (!__sync_bool_compare_and_swap(&existing->threadKey, INVALID_THREAD_KEY, key))
+            if (!__sync_bool_compare_and_swap(&(existing->threadKey), INVALID_THREAD_KEY, key))
                 goto retrysearch; // Somebody was faster, try again.
 
-            FreeAutomaton(automaton);
+            DEBUG_ASSERT(!existing->state.isActive);
             return existing;
         }
 
-        DebugThread("No unused automaton");
+        // DebugThread("No unused automaton");
     }
 
 tryappendagain:
@@ -173,13 +169,12 @@ tryappendagain:
         }
     }
 
-    DebugThread("Trying to fork new automaton");
-
     // Atomically append to chain.
-    if (!__sync_bool_compare_and_swap(&lastInChain->next, NULL, automaton))
+    if (!__sync_bool_compare_and_swap(&(lastInChain->next), NULL, automaton))
+    {
+        GetThreadAutomatonAndLast(key, base, &lastInChain);
         goto tryappendagain;
-
-    DebugThread("Forked new automaton");
+    }
 
     return automaton;
 }

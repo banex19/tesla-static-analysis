@@ -107,7 +107,7 @@ bool TeslaHT_InsertInternal(TeslaHT* hashtable, uint64_t tag, void* data, bool a
     memcpy(bucket + TeslaHT_GetHeaderSize(), data, hashtable->dataSize);
     hashtable->size++;
 
-    if (allowResizing && (hashtable->size > 0.75 * hashtable->capacity))
+    if (allowResizing && (hashtable->size > hashtable->capacity / 2))
     {
         return TeslaHT_ResizeTable(hashtable, hashtable->capacity * 2);
     }
