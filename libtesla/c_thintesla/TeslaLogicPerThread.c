@@ -97,7 +97,7 @@ void FreeAutomaton(TeslaAutomaton* automaton)
     }
 }
 
-TeslaAutomaton* ForkAutomaton(TeslaAutomaton* base)
+TeslaAutomaton* ForkAutomaton(TeslaAutomaton* base, bool* leftover)
 {
     TeslaThreadKey key = GetThreadKey();
 
@@ -109,6 +109,7 @@ retrysearch:
     TeslaAutomaton* existing = GetThreadAutomatonAndLast(key, base, &lastInChain);
     if (existing != NULL)
     {
+        *leftover = true;
         return existing;
     }
     else
@@ -179,11 +180,3 @@ tryappendagain:
     return automaton;
 }
 
-void UpdateEventWithData(TeslaAutomaton* automaton, size_t eventId, void* data)
-{
-    automaton = GetThreadAutomaton(automaton);
-    if (automaton == NULL)
-        return;
-
-    memcpy(automaton->eventStates[eventId].matchData, data, automaton->events[eventId]->matchDataSize * sizeof(size_t));
-}

@@ -81,9 +81,21 @@ class ThinTeslaEvent
     bool isOR = false;
     bool isDeterministic = true;
     bool isBeforeAssertion = false;
+    bool isInitial = false;
 
     bool IsEnd() { return successors.size() == 0; }
+    bool IsFinal() // At least one of the successors is the end event.
+    {
+        for (auto& succ : successors)
+            if (succ->IsEnd())
+                return true;
+        return false;
+    }
     bool IsStart() { return id == 0; }
+    bool IsInitial() // This is a successor of the first temporal bound.
+    {
+        return isInitial;
+    }
 
     virtual bool IsAssertion() { return false; }
 
@@ -299,8 +311,10 @@ class ThinTeslaAssertionBuilder
     {
         for (auto assertion : assertions)
         {
-
             bool beforeAssertion = true;
+
+            ThinTeslaEventPtr start = assertion->events[0];
+
             for (auto event : assertion->events)
             {
                 if (event->IsAssertion())
@@ -311,6 +325,12 @@ class ThinTeslaAssertionBuilder
                 if (!event->isDeterministic)
                 {
                     assertion->isDeterministic = false;
+                }
+
+                for (auto& startSucc : start->successors)
+                {
+                    if (startSucc == event)
+                        event->isInitial = true;
                 }
             }
 

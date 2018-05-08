@@ -22,6 +22,8 @@ typedef struct TeslaEventFlags
     uint8_t isOptional : 1;
     uint8_t isOR : 1;
     uint8_t isEnd : 1;
+    uint8_t isFinal : 1;
+    uint8_t isInitial : 1;
 } TeslaEventFlags;
 
 typedef struct TeslaEventState
@@ -56,6 +58,7 @@ typedef struct TeslaAutomatonState
     int32_t isCorrect;
     int32_t isActive;
     int32_t reachedAssertion;
+    int32_t hasFailed;
 } TeslaAutomatonState;
 
 
@@ -78,6 +81,7 @@ _Static_assert(offsetof(TeslaAutomaton, numEvents) == 16, "Invalid size");
 _Static_assert(offsetof(TeslaAutomaton, next) == 88, "Invalid size");
 
 void TA_Reset(TeslaAutomaton* automaton);
+void TA_Init(TeslaAutomaton* automaton);
 
 #ifdef TESLA_PACK_STRUCTS
 #pragma options align = reset

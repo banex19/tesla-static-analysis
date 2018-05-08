@@ -3,8 +3,21 @@
 #include "TeslaState.h"
 #include "ThinTesla.h"
 
+// Guideline mode is default in the kernel
+#ifdef _KERNEL
+#define GUIDELINE_MODE
+#else
+#define GUIDELINE_MODE
+#endif
+
+#define LATE_INIT
+
+
 /* Generic */
 void StartAutomaton(TeslaAutomaton* automaton);
+TeslaAutomaton* GenerateAutomaton(TeslaAutomaton* base);
+TeslaAutomaton* LateInitAutomaton(TeslaAutomaton* base, TeslaEvent* event);
+TeslaAutomaton* GenerateAndInitAutomaton(TeslaAutomaton* base);
 void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data);
 void UpdateAutomatonDeterministic(TeslaAutomaton* automaton, TeslaEvent* event);
 void UpdateAutomatonDeterministicGeneric(TeslaAutomaton* automaton, TeslaEvent* event, bool updateTag);
@@ -24,7 +37,7 @@ TeslaAutomaton* GetUnusedAutomaton(TeslaAutomaton* automaton);
 void UpdateEventWithData(TeslaAutomaton* automaton, size_t eventId, void* data);
 
 void FreeAutomaton(TeslaAutomaton* automaton);
-TeslaAutomaton* ForkAutomaton(TeslaAutomaton* base);
+TeslaAutomaton* ForkAutomaton(TeslaAutomaton* base, bool* leftover);
 
 /* Helpers */
 size_t GetSuccessor(TeslaEvent* event, TeslaEvent* successor);

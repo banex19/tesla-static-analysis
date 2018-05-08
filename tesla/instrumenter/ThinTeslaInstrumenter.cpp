@@ -707,7 +707,9 @@ GlobalVariable* ThinTeslaInstrumenter::GetEventGlobal(llvm::Module& M, ThinTesla
     flags.isDeterministic = event.isDeterministic;
     flags.isAssertion = event.IsAssertion();
     flags.isBeforeAssertion = event.isBeforeAssertion;
-    flags.isEnd = event.successors.size() == 0;
+    flags.isEnd = event.IsEnd();
+    flags.isFinal = event.IsFinal();
+    flags.isInitial = event.IsInitial();
     Constant* cFlags = ConstantStruct::get(TeslaTypes::EventFlagsTy, TeslaTypes::GetInt(C, 8, *(uint8_t*)(&flags)));
 
     Constant* init = ConstantStruct::get(TeslaTypes::EventTy, eventsArrayPtr, cFlags,
@@ -793,6 +795,7 @@ GlobalVariable* ThinTeslaInstrumenter::GetAutomatonGlobal(llvm::Module& M, ThinT
                                           TeslaTypes::GetSizeT(C, 0),
                                           ConstantPointerNull::get(TeslaTypes::EventTy->getPointerTo()),
                                           ConstantPointerNull::get(TeslaTypes::EventTy->getPointerTo()),
+                                          TeslaTypes::GetBoolValue(C, 0),
                                           TeslaTypes::GetBoolValue(C, 0),
                                           TeslaTypes::GetBoolValue(C, 0),
                                           TeslaTypes::GetBoolValue(C, 0));

@@ -61,58 +61,81 @@ size_t GetSuccessor(TeslaEvent* event, TeslaEvent* successor)
 const TeslaTemporalTag INVALID_TAG = 0;
 const TeslaTemporalTag ONE = 1;
 
-#define GET_THREAD_AUTOMATON(automaton)            \
+#ifdef LATE_INIT
+#define GET_THREAD_AUTOMATON(automaton, event)          \
+    do                                                  \
+    {                                                   \
+        TeslaAutomaton* base = automaton;               \
+        automaton = GetThreadAutomaton(automaton);      \
+        if (automaton == NULL)                          \
+        {                                               \
+            automaton = LateInitAutomaton(base, event); \
+        }                                               \
+    } while (0)
+#else
+#define GET_THREAD_AUTOMATON(automaton, event)     \
     do                                             \
     {                                              \
         automaton = GetThreadAutomaton(automaton); \
-        if (automaton == NULL)                     \
-            return;                                \
+    } while (0)
+#endif
+
+#define RETURN_IF_DISABLED(automaton)                                                      \
+    do                                                                                     \
+    {                                                                                      \
+        if (automaton == NULL || !automaton->state.isActive || automaton->state.hasFailed) \
+        {                                                                                  \
+            return;                                                                        \
+        }                                                                                  \
     } while (0)
 
 #define GET_THREAD_AUTOMATON_AND_NULL(automaton)   \
     do                                             \
     {                                              \
         automaton = GetThreadAutomaton(automaton); \
-                                                   \
     } while (0)
 
-#define AUTOMATON_FAIL(automaton)          \
-    do                                     \
-    {                                      \
-        if (automaton->flags.isLinked)     \
-        {                                  \
-            TA_Reset(automaton);           \
-            return;                        \
-        }                                  \
-        else                               \
-            TeslaAssertionFail(automaton); \
+#define GET_THREAD_AUTOMATON_IF_ENABLED(automaton, event) \
+    do                                                    \
+    {                                                     \
+        GET_THREAD_AUTOMATON(automaton, event);           \
+        RETURN_IF_DISABLED(automaton);                    \
     } while (0)
 
-#define AUTOMATON_FAIL_MESSAGE(automaton, message)         \
-    do                                                     \
-    {                                                      \
-        if (automaton->flags.isLinked)                     \
-        {                                                  \
-            TA_Reset(automaton);                           \
-            return;                                        \
-        }                                                  \
-        else                                               \
-            TeslaAssertionFailMessage(automaton, message); \
+#ifdef LATE_INIT // If we perform late initialization, we cannot fail until we reach the exit bound.
+#define AUTOMATON_FAIL_MESSAGE_RETURN(automaton, message, retval) \
+    do                                                            \
+    {                                                             \
+        automaton->state.hasFailed = true;                        \
+        automaton->state.isActive = false;                        \
+        if (automaton->flags.isLinked)                            \
+        {                                                         \
+            TA_Reset(automaton);                                  \
+            return retval;                                        \
+        }                                                         \
+        else                                                      \
+            return retval;                                        \
     } while (0)
-
-#define AUTOMATON_FAIL_MESSAGE_FALSE(automaton, message)   \
-    do                                                     \
-    {                                                      \
-        if (automaton->flags.isLinked)                     \
-        {                                                  \
-            TA_Reset(automaton);                           \
-            return false;                                  \
-        }                                                  \
-        else                                               \
-            TeslaAssertionFailMessage(automaton, message); \
+#else // If we don't perform late initialization, a failing assertion can immediately report that it failed.
+#define AUTOMATON_FAIL_MESSAGE_RETURN(automaton, message, retval) \
+    do                                                            \
+    {                                                             \
+        automaton->state.hasFailed = true;                        \
+        automaton->state.isActive = false;                        \
+        if (automaton->flags.isLinked)                            \
+        {                                                         \
+            TA_Reset(automaton);                                  \
+            return retval;                                        \
+        }                                                         \
+        else                                                      \
+            TeslaAssertionFailMessage(automaton, message);        \
     } while (0)
+#endif
 
-//#define PRINT_START
+#define AUTOMATON_FAIL(automaton) AUTOMATON_FAIL_MESSAGE_RETURN(automaton, "", )
+#define AUTOMATON_FAIL_MESSAGE(automaton, message) AUTOMATON_FAIL_MESSAGE_RETURN(automaton, message, )
+#define AUTOMATON_FAIL_MESSAGE_FALSE(automaton, message) AUTOMATON_FAIL_MESSAGE_RETURN(automaton, message, false)
+
 //#define PRINT_TRANSITIONS
 //#define PRINT_VERIFICATION
 
@@ -122,97 +145,62 @@ void StartAutomaton(TeslaAutomaton* automaton)
     WASTE_TIME(1);
 #endif
 
-    DEBUG_ASSERT(automaton != NULL);
+#ifndef LATE_INIT
+    GenerateAndInitAutomaton(automaton);
+#endif
+}
 
-    if (automaton->flags.isThreadLocal)
+TeslaAutomaton* GenerateAndInitAutomaton(TeslaAutomaton* base)
+{
+    TeslaAutomaton* automaton = GenerateAutomaton(base);
+
+    if (automaton != NULL)
+        TA_Init(automaton);
+
+    return automaton;
+}
+
+TeslaAutomaton* GenerateAutomaton(TeslaAutomaton* base)
+{
+    DEBUG_ASSERT(base != NULL);
+
+    TeslaAutomaton* automaton = base;
+
+    if (base->flags.isThreadLocal)
     {
-        TeslaAutomaton* base = automaton;
-        automaton = ForkAutomaton(base);
+        bool leftover = false;
+        automaton = ForkAutomaton(base, &leftover);
         if (automaton == NULL)
-            return;
+            return NULL;
 
-        if (automaton->state.isActive) // Leftover automaton.
+        if (leftover) // Leftover automaton.
         {
             TA_Reset(automaton);
-            automaton = ForkAutomaton(base);
-            if (automaton == NULL)
-                return;
+            automaton = ForkAutomaton(base, &leftover);
+            if (automaton = NULL)
+                return NULL;
         }
     }
 
     DEBUG_ASSERT(!automaton->state.isActive);
     DEBUG_ASSERT(automaton->numEvents > 0);
 
-#ifdef PRINT_START
-    DebugAutomaton(automaton);
+    return automaton;
+}
+
+TeslaAutomaton* LateInitAutomaton(TeslaAutomaton* base, TeslaEvent* event)
+{
+#ifdef LATE_INIT
+    if (!event->flags.isInitial && !event->flags.isAssertion)
+        return NULL;
+
+    return GenerateAndInitAutomaton(base);
 #endif
-
-    // Initial state.
-    automaton->state.currentEvent = automaton->events[0];
-    automaton->state.lastEvent = automaton->state.currentEvent;
-    automaton->state.isActive = true;
-
-    // Beginning of time.
-    automaton->state.currentTemporalTag = 1;
-
-    // We assume that this automaton will return a correct response for now.
-    // This can change whenever, for example, an allocation fails.
-    automaton->state.isCorrect = true;
-
-    if (!automaton->flags.isDeterministic)
-    {
-        bool allCorrect = true;
-
-        for (size_t i = 0; i < automaton->numEvents; ++i)
-        {
-            TeslaEvent* event = automaton->events[i];
-            TeslaEventState* state = &automaton->eventStates[i];
-
-            if (event->flags.isDeterministic)
-                continue;
-
-            size_t dataSize = event->matchDataSize * sizeof(size_t);
-
-            // Try to allocate space for the store data structure.
-            if (state->store == NULL)
-            {
-                state->store = TeslaMalloc(sizeof(TeslaStore));
-                if (state->store == NULL)
-                {
-                    allCorrect = false;
-                }
-                else
-                    state->store->type = TESLA_STORE_INVALID;
-            }
-
-            // Try to construct the store.
-            if (state->store != NULL && state->store->type == TESLA_STORE_INVALID)
-            {
-                if (!TeslaStore_Create(TESLA_STORE_HT, 10, dataSize, state->store))
-                {
-                    state->store->type = TESLA_STORE_INVALID;
-                    allCorrect = false;
-                }
-            }
-        }
-
-        automaton->state.isCorrect = allCorrect;
-    }
-
-    for (size_t i = 0; i < automaton->numEvents; ++i)
-    {
-        //    printf("[Init] Store for event %d: %p\n", automaton->events[i]->id, automaton->events[i]->state.store);
-    }
-
-    if (!automaton->state.isCorrect)
-    {
-        TeslaWarning("Automaton may be incorrect");
-    }
 }
 
 void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data)
 {
-    GET_THREAD_AUTOMATON(automaton);
+    GET_THREAD_AUTOMATON_IF_ENABLED(automaton, event);
 
 #ifdef PRINT_TRANSITIONS
     DebugAutomaton(automaton);
@@ -221,7 +209,7 @@ void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data)
 
     printf("Encountered event:\t");
     DebugEvent(event);
-    DebugMatchArray(event);
+    DebugMatchArray(automaton, event);
 #endif
 
     if (!automaton->state.isActive)
@@ -270,8 +258,8 @@ void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data)
 
 void UpdateAutomatonDeterministic(TeslaAutomaton* automaton, TeslaEvent* event)
 {
-    GET_THREAD_AUTOMATON(automaton);
-    return UpdateAutomatonDeterministicGeneric(automaton, event, true);
+    GET_THREAD_AUTOMATON_IF_ENABLED(automaton, event);
+    UpdateAutomatonDeterministicGeneric(automaton, event, true);
 }
 
 void UpdateAutomatonDeterministicGeneric(TeslaAutomaton* automaton, TeslaEvent* event, bool updateTag)
@@ -364,9 +352,9 @@ tryagain:
 
     if (event->flags.isAssertion)
     {
-      //  printf("[%lu] Automaton %s reached assertion\n", automaton->threadKey, automaton->name);
+        //  printf("[%lu] Automaton %s reached assertion\n", automaton->threadKey, automaton->name);
         if (automaton->state.reachedAssertion)
-            TeslaAssertionFailMessage(automaton, "Assertion site reached multiple times");
+            AUTOMATON_FAIL_MESSAGE(automaton, "Assertion site reached multiple times");
 
         if (!foundSuccessor)
         {
@@ -378,6 +366,13 @@ tryagain:
 
         automaton->state.reachedAssertion = true;
     }
+
+#ifdef GUIDELINE_MODE
+    if (foundSuccessor && event->flags.isFinal) // In guideline mode, this automaton has just succesfully completed. Disable it.
+    {
+        automaton->state.isActive = false;
+    }
+#endif
 }
 
 bool VerifyORBlock(TeslaAutomaton* automaton, size_t* i, TeslaTemporalTag* lowerBound, TeslaTemporalTag* upperBound)
@@ -545,9 +540,17 @@ void VerifyAfterAssertion(TeslaAutomaton* automaton, size_t i, TeslaTemporalTag 
 
 void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event)
 {
-    GET_THREAD_AUTOMATON(automaton);
+    GET_THREAD_AUTOMATON(automaton, event);
 
-    if (automaton->state.reachedAssertion) // Only check automata that were in the assertion path.
+    if (automaton == NULL) // No automaton, this is fine.
+        return;
+
+#ifdef LATE_INIT
+    if (automaton->state.hasFailed)
+        TeslaAssertionFailMessage(automaton, "Late-initialized automaton failed and was in temporal bounds");
+#endif
+
+    if (automaton->state.isActive && automaton->state.reachedAssertion) // Only check automata that were in the assertion path.
     {
         DEBUG_ASSERT(automaton->flags.isLinked || automaton->state.isActive);
 
@@ -556,7 +559,13 @@ void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event)
         // If this automaton is not in a final event, the assertion has failed.
         if (!automaton->state.currentEvent->flags.isEnd)
         {
-            AUTOMATON_FAIL(automaton);
+            TeslaAssertionFailMessage(automaton, "Automaton has reached the final temporal bound but is not in a final state");
+        }
+        else
+        {
+#ifdef GUIDELINE_MODE // This should never happen in guideline mode. All succesfull automata should have been catched already.
+            assert(false && "Assertion passed at EndAutomaton() in guideline mode");
+#endif
         }
     }
 
@@ -564,9 +573,11 @@ void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event)
         TA_Reset(automaton);
 }
 
+const bool xorMode = false;
+
 void EndLinkedAutomata(TeslaAutomaton** automata, size_t numAutomata)
 {
-    // Only one automaton should have succeeded.
+    // Only one automaton should succeed in XOR mode.
     bool oneSucceeded = false;
 
     for (size_t i = 0; i < numAutomata; ++i)
@@ -579,10 +590,16 @@ void EndLinkedAutomata(TeslaAutomaton** automata, size_t numAutomata)
         {
             continue;
         }
+        else if (automaton->state.hasFailed)
+        {
+#ifdef LATE_INIT
+            continue;
+#endif
+        }
 
         if (automaton->state.currentEvent->flags.isEnd) // This automaton succeeded.
         {
-            if (oneSucceeded) // More than one succeeded.
+            if (xorMode && oneSucceeded) // More than one succeeded in XOR mode.
                 TeslaAssertionFail(automaton);
 
             oneSucceeded = true;
@@ -592,6 +609,14 @@ void EndLinkedAutomata(TeslaAutomaton** automata, size_t numAutomata)
 
     if (!oneSucceeded)
         TeslaAssertionFail(automata[0]);
+}
+
+void UpdateEventWithData(TeslaAutomaton* automaton, size_t eventId, void* data)
+{
+    TeslaEvent* event = automaton->events[eventId];
+    GET_THREAD_AUTOMATON_IF_ENABLED(automaton, event);
+
+    memcpy(automaton->eventStates[eventId].matchData, data, automaton->events[eventId]->matchDataSize * sizeof(size_t));
 }
 
 void DebugEvent(TeslaEvent* event)
