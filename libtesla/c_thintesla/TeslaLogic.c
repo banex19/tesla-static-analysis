@@ -62,15 +62,15 @@ const TeslaTemporalTag INVALID_TAG = 0;
 const TeslaTemporalTag ONE = 1;
 
 #ifdef LATE_INIT
-#define GET_THREAD_AUTOMATON(automaton, event)          \
-    do                                                  \
-    {                                                   \
-        TeslaAutomaton* base = automaton;               \
-        automaton = GetThreadAutomaton(automaton);      \
-        if (automaton == NULL)                          \
-        {                                               \
-            automaton = LateInitAutomaton(base, event); \
-        }                                               \
+#define GET_THREAD_AUTOMATON(automaton, event)                   \
+    do                                                           \
+    {                                                            \
+        TeslaAutomaton* baseAutomaton = automaton;               \
+        automaton = GetThreadAutomaton(baseAutomaton);           \
+        if (automaton == NULL)                                   \
+        {                                                        \
+            automaton = LateInitAutomaton(baseAutomaton, event); \
+        }                                                        \
     } while (0)
 #else
 #define GET_THREAD_AUTOMATON(automaton, event)     \
@@ -108,6 +108,7 @@ const TeslaTemporalTag ONE = 1;
     {                                                             \
         automaton->state.hasFailed = true;                        \
         automaton->state.isActive = false;                        \
+        automaton->state.failReason = message;                    \
         if (automaton->flags.isLinked)                            \
         {                                                         \
             TA_Reset(automaton);                                  \
@@ -177,7 +178,7 @@ TeslaAutomaton* GenerateAutomaton(TeslaAutomaton* base)
         {
             TA_Reset(automaton);
             automaton = ForkAutomaton(base, &leftover);
-            if (automaton = NULL)
+            if (automaton == NULL)
                 return NULL;
         }
     }
@@ -547,7 +548,7 @@ void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event)
 
 #ifdef LATE_INIT
     if (automaton->state.hasFailed)
-        TeslaAssertionFailMessage(automaton, "Late-initialized automaton failed and was in temporal bounds");
+        TeslaAssertionFailMessage(automaton, automaton->state.failReason);
 #endif
 
     if (automaton->state.isActive && automaton->state.reachedAssertion) // Only check automata that were in the assertion path.

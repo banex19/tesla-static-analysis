@@ -798,7 +798,8 @@ GlobalVariable* ThinTeslaInstrumenter::GetAutomatonGlobal(llvm::Module& M, ThinT
                                           TeslaTypes::GetBoolValue(C, 0),
                                           TeslaTypes::GetBoolValue(C, 0),
                                           TeslaTypes::GetBoolValue(C, 0),
-                                          TeslaTypes::GetBoolValue(C, 0));
+                                          TeslaTypes::GetBoolValue(C, 0),
+                                          ConstantPointerNull::get(Int8PtrTy));
 
     Constant* init = ConstantStruct::get(TeslaTypes::AutomatonTy, eventsArrayPtr, cFlags,
                                          TeslaTypes::GetSizeT(C, assertion.events.size()),

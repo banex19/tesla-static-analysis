@@ -78,12 +78,15 @@ void TeslaTypes::PopulateAutomatonTy(Module& M)
     PointerType* EventPtrTy = PointerType::getUnqual(EventTy);
 
     AutomatonFlagsTy = GetStructType("TeslaAutomatonFlags", {Int8Ty}, M, TESLA_STRUCTS_PACKED);
-    AutomatonStateTy = GetStructType("TeslaAutomatonState", {SizeTTy, EventPtrTy, EventPtrTy, Int32Ty, Int32Ty, Int32Ty, Int32Ty}, M, TESLA_STRUCTS_PACKED);
+    AutomatonStateTy = GetStructType("TeslaAutomatonState", {SizeTTy, EventPtrTy, EventPtrTy, Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int8PtrTy}, M, TESLA_STRUCTS_PACKED);
     AutomatonTy = GetStructType("TeslaAutomaton",
                                 {VoidPtrPtrTy, AutomatonFlagsTy, SizeTTy, VoidPtrTy, AutomatonStateTy, EventStateTy->getPointerTo(), SizeTTy, VoidPtrTy},
                                 M, TESLA_STRUCTS_PACKED);
 
-    DataLayout dataLayout {&M};
+    DataLayout dataLayout{&M};
+    const StructLayout* layout = dataLayout.getStructLayout(AutomatonTy);
+    assert(layout->getElementOffset(6) == offsetof(TeslaAutomaton, threadKey));
+    assert(layout->getElementOffset(7) == offsetof(TeslaAutomaton, next));
     assert(dataLayout.getTypeStoreSize(AutomatonTy) == sizeof(TeslaAutomaton));
 }
 

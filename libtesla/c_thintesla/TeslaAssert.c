@@ -11,13 +11,13 @@ void TeslaWarning(const char* warning)
 
 void TeslaAssertionFail(TeslaAutomaton* automaton)
 {
-    TeslaAssertionFailMessage(automaton, "");
+    TeslaAssertionFailMessage(automaton, NULL);
 }
 
 void TeslaAssertionFailMessage(TeslaAutomaton* automaton, const char* message)
 {
 #ifndef _KERNEL
-    if (strcmp(message, "") != 0)
+    if (message != NULL && strcmp(message, "") != 0)
     {
         fprintf(stderr, "TESLA ASSERTION FAILED - Automaton %s\nReason: %s\n", automaton->name, message);
     }
@@ -26,7 +26,7 @@ void TeslaAssertionFailMessage(TeslaAutomaton* automaton, const char* message)
         fprintf(stderr, "TESLA ASSERTION FAILED - Automaton %s\n", automaton->name);
     }
 #else
-    if (strcmp(message, "") != 0)
+    if (message != NULL && strcmp(message, "") != 0)
     {
         printf("TESLA ASSERTION FAILED - Automaton %s\nReason: %s\n", automaton->name, message);
     }

@@ -59,6 +59,7 @@ typedef struct TeslaAutomatonState
     int32_t isActive;
     int32_t reachedAssertion;
     int32_t hasFailed;
+    char* failReason;
 } TeslaAutomatonState;
 
 
@@ -76,9 +77,9 @@ typedef struct TeslaAutomaton
     struct TeslaAutomaton* next;
 } TeslaAutomaton;
 
-_Static_assert(sizeof(TeslaAutomaton) == 96, "Invalid size");
+_Static_assert(sizeof(TeslaAutomaton) == 104, "Invalid size");
 _Static_assert(offsetof(TeslaAutomaton, numEvents) == 16, "Invalid size");
-_Static_assert(offsetof(TeslaAutomaton, next) == 88, "Invalid size");
+_Static_assert(offsetof(TeslaAutomaton, next) == 96, "Invalid size");
 
 void TA_Reset(TeslaAutomaton* automaton);
 void TA_Init(TeslaAutomaton* automaton);

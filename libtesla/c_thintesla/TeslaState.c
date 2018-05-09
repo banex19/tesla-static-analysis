@@ -1,4 +1,5 @@
 #include "TeslaState.h"
+#include "TeslaAssert.h"
 
 void TA_Reset(TeslaAutomaton* automaton)
 {
