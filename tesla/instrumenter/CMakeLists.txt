@@ -35,3 +35,5 @@ target_link_libraries(LLVMTesla
 include_directories("${CMAKE_SOURCE_DIR}/../include")
  
 install(TARGETS LLVMTesla DESTINATION lib)
+
+add_subdirectory(static-optimization)
