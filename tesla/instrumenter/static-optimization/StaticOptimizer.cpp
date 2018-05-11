@@ -741,6 +741,9 @@ struct InstrumentPass : public ModulePass
 
                     for (size_t i = firstDifferent; i < pathToBefore.size(); ++i)
                     {
+                        if (event == before)
+                            break;
+
                         bool neverCalled = DefinitelyNeverCalled(M, graph, pathToBefore[i], event);
                         if (!neverCalled)
                         {
