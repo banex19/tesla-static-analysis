@@ -38,19 +38,31 @@ void TeslaVector_Destroy(TeslaVector* vector)
     vector->data = NULL;
 }
 
+void TeslaVector_Clear(TeslaVector* vector)
+{
+    vector->size = 0;
+}
+
 bool TeslaVector_Add(TeslaVector* vector, void* elem)
+{
+    return TeslaVector_AddAndReturn(vector, elem) != NULL;
+}
+
+uint8_t* TeslaVector_AddAndReturn(TeslaVector* vector, void* elem)
 {
     if (vector->size + 1 > vector->capacity)
     {
         if (!TeslaVector_Resize(vector, vector->capacity * 2))
-            return false;
+            return NULL;
     }
 
-    memcpy(vector->data + vector->elemSize * vector->size, elem, vector->elemSize);
+    uint8_t* addr = vector->data + vector->elemSize * vector->size;
+
+    memcpy(addr, elem, vector->elemSize);
 
     vector->size = vector->size + 1;
 
-    return true;
+    return addr;
 }
 
 void TeslaVector_Get(TeslaVector* vector, size_t i, void* out)

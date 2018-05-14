@@ -126,6 +126,9 @@ uint64_t TeslaHT_LookupTag(TeslaHT* hashtable, void* data)
 
 BucketHeader* TeslaHT_LookupTagPtr(TeslaHT* hashtable, void* data)
 {
+    if (hashtable->size == 0)
+        return NULL;
+        
     uint64_t hash = Hash64(data, hashtable->dataSize);
 
     size_t bucketIndex = hash % hashtable->capacity;

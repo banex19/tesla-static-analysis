@@ -26,20 +26,25 @@ void TA_Reset(TeslaAutomaton* automaton)
                 //   event->state.store = NULL;
             }
         }
+
+        if (automaton->history != NULL && automaton->history->valid)
+            TeslaHistory_Clear(automaton->history);
     }
 
- //   printf("[%lu] Resetting automaton %p\n",  automaton->threadKey, automaton);
+    //   printf("[%lu] Resetting automaton %p\n",  automaton->threadKey, automaton);
 
     // Signal this automaton can be reused.
+    automaton->state.isInit = false;
     automaton->threadKey = INVALID_THREAD_KEY;
 }
 
-void TA_Init(TeslaAutomaton* automaton)
+void TA_InitCommon(TeslaAutomaton* automaton)
 {
     // Initial state.
     automaton->state.currentEvent = automaton->events[0];
     automaton->state.lastEvent = automaton->state.currentEvent;
     automaton->state.isActive = true;
+    automaton->state.isInit = true;
 
     // Beginning of time.
     automaton->state.currentTemporalTag = 1;
@@ -47,6 +52,11 @@ void TA_Init(TeslaAutomaton* automaton)
     // We assume that this automaton will return a correct response for now.
     // This can change whenever, for example, an allocation fails.
     automaton->state.isCorrect = true;
+}
+
+void TA_Init(TeslaAutomaton* automaton)
+{
+    TA_InitCommon(automaton);
 
     if (!automaton->flags.isDeterministic)
     {
@@ -96,5 +106,38 @@ void TA_Init(TeslaAutomaton* automaton)
     if (!automaton->state.isCorrect)
     {
         TeslaWarning("Automaton may be incorrect");
+    }
+}
+
+void TA_InitLinearHistory(TeslaAutomaton* automaton)
+{
+    TA_InitCommon(automaton);
+
+    if (!automaton->flags.isDeterministic)
+    {
+        bool allCorrect = true;
+        if (automaton->history == NULL)
+        {
+            automaton->history = TeslaMalloc(sizeof(TeslaHistory));
+            if (automaton->history == NULL)
+            {
+                allCorrect = false;
+            }
+            else
+                automaton->history->valid = false;
+        }
+
+        if (automaton->history != NULL && !automaton->history->valid)
+        {
+            if (!TeslaHistory_Create(automaton->history))
+            {
+                allCorrect = false;
+                automaton->history->valid = false;
+            }
+            else
+                automaton->history->valid = true;
+        }
+
+        automaton->state.isCorrect = allCorrect;
     }
 }

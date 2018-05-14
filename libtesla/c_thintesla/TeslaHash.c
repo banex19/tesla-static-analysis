@@ -1,11 +1,11 @@
 #include "TeslaHash.h"
 
-uint64_t FakeHash64(void* data, size_t len)
+HashSize FakeHash64(void* data, size_t len)
 {
     return ((size_t*)data)[0];
 }
 
-uint64_t BadHash64(void* data, size_t len)
+HashSize BadHash64(void* data, size_t len)
 {
     DEBUG_ASSERT(len % sizeof(size_t) == 0);
 
@@ -19,7 +19,7 @@ uint64_t BadHash64(void* data, size_t len)
     return hash;
 }
 
-uint64_t Hash64(void* data, size_t len)
+HashSize Hash64(void* data, size_t len)
 {
     /* uint64_t out[2] = {0};
 

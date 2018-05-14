@@ -36,6 +36,18 @@ struct FunctionProperties
     std::string function;
 };
 
+struct ValueProperties
+{
+    ValueProperties(ThinTeslaEventPtr event)
+        : event(event)
+    {
+    }
+
+    bool alwaysCalledWithCorrectParams = false;
+
+    ThinTeslaEventPtr event;
+};
+
 struct TemporalProperties
 {
     TemporalProperties(const std::string& before, const std::string& after)
@@ -259,6 +271,24 @@ struct InstrumentPass : public ModulePass
         return prop;
     }
 
+    ValueProperties ReportValueProperties(Module& M, CallGraph& graph, const std::string& bound, ThinTeslaEventPtr& event)
+    {
+        ValueProperties prop{event};
+        std::string function = event->GetInstrumentationTarget();
+        if (event->NeedsParametricInstrumentation())
+        {
+            llvm::errs() << "--------------------- (value) " << function << "\n";
+            auto params = event->GetParameters();
+
+            prop.alwaysCalledWithCorrectParams = AlwaysCalledWithParameters(M, graph, bound, function, params);
+            if (prop.alwaysCalledWithCorrectParams)
+                llvm::errs() << "[RESULT] Function " << function << " is always called with the correct parameters\n";
+
+            llvm::errs() << "\n\n";
+        }
+        return prop;
+    }
+
     bool runOnTesla(Module& M)
     {
         std::unique_ptr<tesla::Manifest> manifest(tesla::Manifest::load(llvm::errs()));
@@ -299,7 +329,7 @@ struct InstrumentPass : public ModulePass
                 llvm::errs() << "**************************************************\n";
                 llvm::errs() << "Event " << first->id << ": " << firstTarget << " ---> ";
                 llvm::errs() << "Event " << second->id << ": " << secondTarget << "\n";
-                Analyse(M, assertion.events[0]->GetInstrumentationTarget(), firstTarget, secondTarget, second->IsFinal());
+                Analyse(M, assertion.events[0]->GetInstrumentationTarget(), first, second, second->IsFinal());
                 llvm::errs() << "**************************************************\n\n";
             }
         }
@@ -322,21 +352,21 @@ struct InstrumentPass : public ModulePass
         return runOnTesla(M);
     }
 
-    bool Analyse(Module& M, const std::string& bound, const std::string& firstFunctionName, const std::string& secondFunctionName, bool secondIsFinal)
+    bool Analyse(Module& M, const std::string& bound, ThinTeslaEventPtr& first, ThinTeslaEventPtr& second, bool secondIsFinal)
     {
         CallGraph graph{M};
 
         // graph.print(llvm::errs());
+
+        const std::string& before = first->IsAssertion() ? "__tesla_inline_assertion" : first->GetInstrumentationTarget();
+        const std::string& after = second->IsAssertion() ? "__tesla_inline_assertion" : second->GetInstrumentationTarget();
+        const std::string& assertion = "__tesla_inline_assertion";
 
         if (M.getFunction(firstFunctionName) == nullptr || M.getFunction(secondFunctionName) == nullptr)
         {
             llvm::errs() << "Invalid functions\n";
             return false;
         }
-
-        const std::string& before = firstFunctionName;
-        const std::string& after = secondFunctionName;
-        const std::string& assertion = "__tesla_inline_assertion";
 
         bool hasRecursion = false;
 
@@ -360,6 +390,8 @@ struct InstrumentPass : public ModulePass
 
         FunctionProperties beforeProp = ReportFunctionProperties(M, graph, bound, before);
         FunctionProperties afterProp = ReportFunctionProperties(M, graph, bound, after);
+        ValueProperties beforeValueProp = ReportValueProperties(M, graph, bound, first);
+        ValueProperties afterValueProp = ReportValueProperties(M, graph, bound, second);
         TemporalProperties temporalProp = ReportFunctionDependencies(M, graph, bound, before, after);
 
         if (beforeProp.definitelyHappens && afterProp.definitelyHappens)
@@ -509,6 +541,85 @@ struct InstrumentPass : public ModulePass
         {
             GetAllCallsAfterAux(succ, calls, visited);
         }
+    }
+
+    std::map<size_t, ThinTeslaParameter> ParameterMap(std::vector<ThinTeslaParameter>& params)
+    {
+        std::map<size_t, ThinTeslaParameter> map;
+
+        for (auto& param : params)
+        {
+            map[param.index] = param;
+        }
+
+        return map;
+    }
+
+    size_t GetConstantValue(Constant* val)
+    {
+        val = val->stripPointerCasts();
+        ConstantInt* intVal = dyn_cast<ConstantInt>(val);
+        if (intVal != nullptr)
+        {
+            return intVal->getLimitedValue();
+        }
+        ConstantPointerNull* nullConstant = dyn_cast<ConstantPointerNull>(val);
+        if (nullConstant != nullptr)
+        {
+            return 0;
+        }
+
+        assert(false);
+    }
+
+    bool AlwaysCalledWithParameters(Module& M, CallGraph& graph, const std::string& bound, const std::string& function, std::vector<ThinTeslaParameter>& params)
+    {
+        bool hasRecursion = false;
+        auto paths = GetPathsTo(M, graph, bound, function, hasRecursion);
+
+        for (auto& param : params)
+        {
+            if (!param.isConstant)
+                return false;
+        }
+        auto paramMap = ParameterMap(params);
+
+        for (auto& path : paths)
+        {
+            if (path.size() <= 1)
+                continue;
+
+            std::string parentFunctionName = path[path.size() - 2];
+            if (parentFunctionName != function)
+            {
+                auto calls = GetAllCallsToFunction(M.getFunction(parentFunctionName), function);
+
+                for (auto& call : calls)
+                {
+                    for (size_t i = 0; i < call->getNumArgOperands(); ++i)
+                    {
+                        Value* arg = call->getArgOperand(i);
+
+                        if (paramMap.find(i) != paramMap.end())
+                        {
+
+                            Constant* constant = dyn_cast<Constant>(arg);
+                            if (constant != nullptr)
+                            {
+                                if (GetConstantValue(constant) != paramMap[i].constantValue)
+                                    return false;
+                            }
+                            else
+                            {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return true;
     }
 
     bool MayHappen(Module& M, CallGraph& graph, const std::string& bound, const std::string& functionName)
@@ -758,9 +869,9 @@ struct InstrumentPass : public ModulePass
                                       DefinitelyCalledAfter(M, graph, lastCommonFunction, path[firstDifferent], event);
                     if (!definitelyAfter)
                     {
-                        llvm::errs() << "Event " << event << " is not definitely after " << path[firstDifferent] << " in " << lastCommonFunction << "\n";
+                        // llvm::errs() << "Event " << event << " is not definitely after " << path[firstDifferent] << " in " << lastCommonFunction << "\n";
                         //   llvm::errs() << "Path: " << StringFromVector(path) << "\n";
-                        llvm::errs() << "Path to before: " << StringFromVector(pathToBefore) << "\n";
+                        // llvm::errs() << "Path to before: " << StringFromVector(pathToBefore) << "\n";
                         goto trynewpath;
                     }
                 }
@@ -853,7 +964,7 @@ struct InstrumentPass : public ModulePass
             CallInst* callInst = dyn_cast<CallInst>(&I);
             if (callInst != nullptr)
             {
-                if (callInst->getCalledFunction()->getName() == after)
+                if (!foundAfter && callInst->getCalledFunction()->getName() == after)
                 {
                     foundAfter = true;
                 }
@@ -864,7 +975,6 @@ struct InstrumentPass : public ModulePass
                 }
             }
         }
-
         return true;
     }
 
@@ -879,6 +989,7 @@ struct InstrumentPass : public ModulePass
 
             for (auto& callAfter : callsAfter)
             {
+
                 BasicBlock* afterBlock = callAfter->getParent();
 
                 if (beforeBlock == afterBlock && !CallDefinitelyAfterInBlock(beforeBlock, after, before))

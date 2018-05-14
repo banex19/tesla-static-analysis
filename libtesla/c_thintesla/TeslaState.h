@@ -1,5 +1,6 @@
 #pragma once
 
+#include "TeslaHistory.h"
 #include "TeslaStore.h"
 #include "TeslaTypes.h"
 #include "ThinTesla.h"
@@ -43,6 +44,8 @@ typedef struct TeslaEvent
     uint8_t matchDataSize;
 } TeslaEvent;
 
+#define GetEventMatchSize(eventToGetSizeFrom) (eventToGetSizeFrom->matchDataSize * sizeof(size_t))
+
 typedef struct TeslaAutomatonFlags
 {
     uint8_t isDeterministic : 1;
@@ -55,13 +58,13 @@ typedef struct TeslaAutomatonState
     TeslaTemporalTag currentTemporalTag;
     TeslaEvent* currentEvent;
     TeslaEvent* lastEvent;
+    int32_t isInit;
     int32_t isCorrect;
     int32_t isActive;
     int32_t reachedAssertion;
     int32_t hasFailed;
     char* failReason;
 } TeslaAutomatonState;
-
 
 typedef struct TeslaAutomaton
 {
@@ -72,17 +75,20 @@ typedef struct TeslaAutomaton
 
     TeslaAutomatonState state;
     TeslaEventState* eventStates;
+    TeslaHistory* history;
 
     TeslaThreadKey threadKey;
     struct TeslaAutomaton* next;
 } TeslaAutomaton;
 
-_Static_assert(sizeof(TeslaAutomaton) == 104, "Invalid size");
+_Static_assert(sizeof(TeslaAutomaton) == 120, "Invalid size");
 _Static_assert(offsetof(TeslaAutomaton, numEvents) == 16, "Invalid size");
-_Static_assert(offsetof(TeslaAutomaton, next) == 96, "Invalid size");
+_Static_assert(offsetof(TeslaAutomaton, next) == 112, "Invalid size");
 
 void TA_Reset(TeslaAutomaton* automaton);
+void TA_InitCommon(TeslaAutomaton* automaton);
 void TA_Init(TeslaAutomaton* automaton);
+void TA_InitLinearHistory(TeslaAutomaton* automaton);
 
 #ifdef TESLA_PACK_STRUCTS
 #pragma options align = reset

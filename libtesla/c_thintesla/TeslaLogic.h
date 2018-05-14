@@ -12,6 +12,8 @@
 
 #define LATE_INIT
 
+#define LINEAR_HISTORY
+
 
 /* Generic */
 void StartAutomaton(TeslaAutomaton* automaton);
@@ -26,6 +28,13 @@ bool VerifyORBlock(TeslaAutomaton* automaton, size_t* i, TeslaTemporalTag* lower
 void VerifyAfterAssertion(TeslaAutomaton* automaton, size_t i, TeslaTemporalTag lowerBound, TeslaTemporalTag upperBound);
 void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event);
 void EndLinkedAutomata(TeslaAutomaton** automata, size_t numAutomata);
+
+/* Linear history */
+size_t GetFirstOREventFromLastInBlock(TeslaAutomaton* automaton, size_t lastOREvent);
+bool MatchEvent(TeslaAutomaton* automaton, Observation* observation);
+bool VerifyORBlockLinearHistory(TeslaAutomaton* automaton, Observation* invalid, Observation** currentObservation, size_t lastOREvent, size_t* out_i);
+bool UpdateAutomatonLinearHistory(TeslaAutomaton* automaton, TeslaEvent* event, void* data);
+void VerifyAutomatonLinearHistory(TeslaAutomaton* automaton, size_t assertionEventId);
 
 /* Per-thread specific */
 bool AreThreadKeysEqual(TeslaThreadKey first, TeslaThreadKey second);
@@ -46,3 +55,8 @@ size_t GetSuccessor(TeslaEvent* event, TeslaEvent* successor);
 void DebugEvent(TeslaEvent* event);
 void DebugAutomaton(TeslaAutomaton* automaton);
 void DebugMatchArray(TeslaAutomaton* automaton, TeslaEvent* event);
+
+
+#define INCLUDING_TESLA_MACROS
+#include "TeslaMacros.h"
+#undef INCLUDING_TESLA_MACROS

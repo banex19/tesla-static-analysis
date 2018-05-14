@@ -799,12 +799,14 @@ GlobalVariable* ThinTeslaInstrumenter::GetAutomatonGlobal(llvm::Module& M, ThinT
                                           TeslaTypes::GetBoolValue(C, 0),
                                           TeslaTypes::GetBoolValue(C, 0),
                                           TeslaTypes::GetBoolValue(C, 0),
+                                          TeslaTypes::GetBoolValue(C, 0),
                                           ConstantPointerNull::get(Int8PtrTy));
 
     Constant* init = ConstantStruct::get(TeslaTypes::AutomatonTy, eventsArrayPtr, cFlags,
                                          TeslaTypes::GetSizeT(C, assertion.events.size()),
                                          ConstantExpr::getBitCast(GetStringGlobal(M, autID, autID + "_name"), Int8PtrTy),
                                          state, ConstantExpr::getBitCast(GetEventsStateArray(M, assertion), TeslaTypes::EventStateTy->getPointerTo()),
+                                         ConstantPointerNull::get(Int8PtrTy),
                                          TeslaTypes::GetSizeT(C, INVALID_THREAD_KEY), ConstantPointerNull::get(Int8PtrTy));
 
     GlobalVariable* var = CreateGlobalVariable(M, TeslaTypes::AutomatonTy, init, autID, THREAD_LOCAL);

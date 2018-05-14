@@ -273,7 +273,10 @@ class ThinTeslaAssertionBuilder
         assertions.push_back(assertion);
         currentAssertion = assertion;
 
+        bool inOR = currentlyInOR;
+        currentlyInOR = false;
         ConvertExp(*entryBound);
+        currentlyInOR = inOR;
     }
 
     void SetAssertionGlobalProperties()
@@ -287,7 +290,10 @@ class ThinTeslaAssertionBuilder
             assertion->affectedFunctions = affectedFunctions;
 
             currentAssertion = assertion;
+            bool inOR = currentlyInOR;
+            currentlyInOR = false;
             ConvertExp(*exitBound);
+            currentlyInOR = inOR;
         }
 
         for (size_t i = 0; i < assertions.size(); ++i)

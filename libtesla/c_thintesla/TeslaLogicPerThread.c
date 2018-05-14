@@ -75,6 +75,9 @@ TeslaAutomaton* GetThreadAutomatonKey(TeslaThreadKey key, TeslaAutomaton* automa
 
 TeslaAutomaton* GetThreadAutomaton(TeslaAutomaton* automaton)
 {
+    if (!automaton->flags.isThreadLocal)
+        return automaton;
+        
     return GetThreadAutomatonKey(GetThreadKey(), automaton);
 }
 
