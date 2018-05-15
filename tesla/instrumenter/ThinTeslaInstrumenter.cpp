@@ -1,6 +1,8 @@
 #include "ThinTeslaInstrumenter.h"
 #include "Names.h"
 
+#include "../../libtesla/c_thintesla/TeslaLogic.h"
+
 using namespace llvm;
 
 const bool THREAD_LOCAL = false;
@@ -537,7 +539,10 @@ void ThinTeslaInstrumenter::InstrumentInstruction(llvm::Module& M, llvm::Instruc
 
     if (event.IsStart())
     {
+        // If we're doing late initialization, skip this.
+#ifndef LATE_INIT
         builder.CreateCall(startAutomaton, {GetAutomatonGlobal(M, assertion)});
+#endif
     }
     else if (event.IsEnd())
     {
@@ -859,7 +864,7 @@ GlobalVariable* ThinTeslaInstrumenter::GetStringGlobal(llvm::Module& M, const st
 
     return var;
 }
-\
+
 GlobalVariable* ThinTeslaInstrumenter::CreateGlobalVariable(llvm::Module& M, llvm::Type* type, llvm::Constant* initializer,
                                                             const std::string& name, bool threadLocal)
 {

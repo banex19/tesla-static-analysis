@@ -5,17 +5,37 @@
 #endif
 
 #ifdef LATE_INIT
-#define GET_THREAD_AUTOMATON(automaton, event)                   \
-    do                                                           \
-    {                                                            \
-        TeslaAutomaton* baseAutomaton = automaton;               \
-        automaton = GetThreadAutomaton(baseAutomaton);           \
-        if (automaton == NULL || !automaton->state.isInit)                                   \
-        {                                                        \
-            automaton = LateInitAutomaton(baseAutomaton, automaton, event); \
-        }                                                        \
+#ifdef _KERNEL
+#define GET_THREAD_AUTOMATON(automaton, event)                                                                  \
+    do                                                                                                          \
+    {                                                                                                           \
+        TeslaAutomaton* baseAutomaton = automaton;                                                              \
+        if (!DoesKernelAutomatonExist(baseAutomaton) && (!event->flags.isInitial && !event->flags.isAssertion)) \
+            automaton = NULL;                                                                                   \
+        else                                                                                                    \
+        {                                                                                                       \
+            automaton = GetThreadAutomaton(baseAutomaton);                                                      \
+            if (automaton == NULL || !automaton->state.isInit)                                                  \
+            {                                                                                                   \
+                automaton = LateInitAutomaton(baseAutomaton, automaton, event);                                 \
+            }                                                                                                   \
+        }                                                                                                       \
     } while (0)
 #else
+#define GET_THREAD_AUTOMATON(automaton, event)                              \
+    do                                                                      \
+    {                                                                       \
+        TeslaAutomaton* baseAutomaton = automaton;                          \
+        automaton = GetThreadAutomaton(baseAutomaton);                      \
+        if (automaton == NULL || !automaton->state.isInit)                  \
+        {                                                                   \
+            automaton = LateInitAutomaton(baseAutomaton, automaton, event); \
+        }                                                                   \
+    } while (0)
+#endif
+#endif
+
+#ifndef LATE_INIT
 #define GET_THREAD_AUTOMATON(automaton, event)     \
     do                                             \
     {                                              \

@@ -2,6 +2,7 @@
 
 #include "TeslaState.h"
 #include "ThinTesla.h"
+#include "KernelThreadAutomaton.h"
 
 // Guideline mode is default in the kernel
 #ifdef _KERNEL
@@ -12,10 +13,10 @@
 
 #define LATE_INIT
 
-#define LINEAR_HISTORY
+//#define LINEAR_HISTORY
 
 
-/* Generic */
+/* Generic and per-event tagging */
 void StartAutomaton(TeslaAutomaton* automaton);
 TeslaAutomaton* GenerateAutomaton(TeslaAutomaton* base);
 TeslaAutomaton* InitAutomaton(TeslaAutomaton* automaton);

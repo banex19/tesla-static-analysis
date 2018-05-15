@@ -68,9 +68,15 @@ bool CloneAutomatonToKernel(TeslaAutomaton* base, TeslaAutomaton* kernel)
     return true;
 }
 
+bool DoesKernelAutomatonExist(TeslaAutomaton* base)
+{
+    return curthread->automata != NULL;
+}
+
 TeslaAutomaton* GetThreadAutomatonKernel(TeslaAutomaton* base)
 {
 #ifdef _KERNEL
+
     KernelThreadAutomata* automata = curthread->automata;
     if (automata == NULL)
     {
