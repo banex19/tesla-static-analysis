@@ -40,6 +40,8 @@ void TA_Reset(TeslaAutomaton* automaton)
 
 void TA_InitCommon(TeslaAutomaton* automaton)
 {
+    assert(automaton != NULL);
+
     // Initial state.
     automaton->state.currentEvent = automaton->events[0];
     automaton->state.lastEvent = automaton->state.currentEvent;

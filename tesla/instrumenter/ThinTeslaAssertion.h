@@ -217,6 +217,7 @@ struct ThinTeslaAssertion
 
     std::vector<ThinTeslaEventPtr> events;
     size_t id = 0;
+    size_t globalId = 0;
 
     bool isDeterministic = true;
     bool isThreadLocal = false;

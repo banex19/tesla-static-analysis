@@ -1,7 +1,15 @@
 #pragma once
-#include "ThinTesla.h"
 
-typedef uint64_t TeslaTemporalTag;
+_Static_assert(sizeof(unsigned long) == 8, "Invalid size_t");
 
-typedef size_t TeslaThreadKey;
+typedef unsigned long TeslaTemporalTag;
+
+typedef unsigned long TeslaThreadKey;
+
+typedef struct KernelThreadAutomata
+{
+    struct TeslaAutomaton* automata;
+    unsigned long numAutomata;
+} KernelThreadAutomata;
+
 #define INVALID_THREAD_KEY ((TeslaThreadKey)-1)

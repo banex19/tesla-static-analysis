@@ -67,7 +67,7 @@ const TeslaTemporalTag ONE = 1;
 void StartAutomaton(TeslaAutomaton* automaton)
 {
 #ifndef _KERNEL
-   // WASTE_TIME(1);
+    // WASTE_TIME(1);
 #endif
 
 #ifndef LATE_INIT
@@ -75,10 +75,8 @@ void StartAutomaton(TeslaAutomaton* automaton)
 #endif
 }
 
-TeslaAutomaton* GenerateAndInitAutomaton(TeslaAutomaton* base)
+TeslaAutomaton* InitAutomaton(TeslaAutomaton* automaton)
 {
-    TeslaAutomaton* automaton = GenerateAutomaton(base);
-
     if (automaton != NULL)
     {
 #ifndef LINEAR_HISTORY
@@ -89,6 +87,12 @@ TeslaAutomaton* GenerateAndInitAutomaton(TeslaAutomaton* base)
     }
 
     return automaton;
+}
+
+TeslaAutomaton* GenerateAndInitAutomaton(TeslaAutomaton* base)
+{
+    TeslaAutomaton* automaton = GenerateAutomaton(base);
+    return InitAutomaton(automaton);
 }
 
 TeslaAutomaton* GenerateAutomaton(TeslaAutomaton* base)
@@ -119,13 +123,18 @@ TeslaAutomaton* GenerateAutomaton(TeslaAutomaton* base)
     return automaton;
 }
 
-TeslaAutomaton* LateInitAutomaton(TeslaAutomaton* base, TeslaEvent* event)
+TeslaAutomaton* LateInitAutomaton(TeslaAutomaton* base, TeslaAutomaton* automaton, TeslaEvent* event)
 {
 #ifdef LATE_INIT
     if (!event->flags.isInitial && !event->flags.isAssertion)
         return NULL;
 
-    return GenerateAndInitAutomaton(base);
+    if (automaton == NULL)
+        return GenerateAndInitAutomaton(base);
+    else if (!automaton->state.isInit)
+        return InitAutomaton(automaton);
+
+    assert(false);
 #endif
 }
 
@@ -208,7 +217,9 @@ void UpdateAutomatonDeterministicGeneric(TeslaAutomaton* automaton, TeslaEvent* 
     bool triedAgain = false;
     bool foundSuccessor = false;
 
+#ifndef LINEAR_HISTORY
     TeslaEvent* originalCurrent = automaton->state.currentEvent;
+#endif
 
 #ifdef PRINT_TRANSITIONS
     DebugAutomaton(automaton);

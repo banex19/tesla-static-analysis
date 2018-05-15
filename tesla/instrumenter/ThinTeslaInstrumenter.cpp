@@ -5,6 +5,8 @@ using namespace llvm;
 
 const bool THREAD_LOCAL = false;
 
+const GlobalValue::LinkageTypes DEFAULT_LINKAGE = GlobalValue::LinkOnceODRLinkage;
+
 char ThinTeslaInstrumenter::ID = 0;
 
 void OutFunction(llvm::Function* f)
@@ -807,7 +809,8 @@ GlobalVariable* ThinTeslaInstrumenter::GetAutomatonGlobal(llvm::Module& M, ThinT
                                          ConstantExpr::getBitCast(GetStringGlobal(M, autID, autID + "_name"), Int8PtrTy),
                                          state, ConstantExpr::getBitCast(GetEventsStateArray(M, assertion), TeslaTypes::EventStateTy->getPointerTo()),
                                          ConstantPointerNull::get(Int8PtrTy),
-                                         TeslaTypes::GetSizeT(C, INVALID_THREAD_KEY), ConstantPointerNull::get(Int8PtrTy));
+                                         TeslaTypes::GetSizeT(C, INVALID_THREAD_KEY), ConstantPointerNull::get(Int8PtrTy),
+                                         TeslaTypes::GetSizeT(C, assertions.size()), TeslaTypes::GetSizeT(C, assertion.globalId));
 
     GlobalVariable* var = CreateGlobalVariable(M, TeslaTypes::AutomatonTy, init, autID, THREAD_LOCAL);
 
@@ -856,20 +859,20 @@ GlobalVariable* ThinTeslaInstrumenter::GetStringGlobal(llvm::Module& M, const st
 
     return var;
 }
-
+\
 GlobalVariable* ThinTeslaInstrumenter::CreateGlobalVariable(llvm::Module& M, llvm::Type* type, llvm::Constant* initializer,
                                                             const std::string& name, bool threadLocal)
 {
     if (threadLocal)
     {
         return new GlobalVariable(M, type, true,
-                                  GlobalValue::WeakAnyLinkage, initializer, name,
+                                  DEFAULT_LINKAGE, initializer, name,
                                   nullptr, GlobalValue::ThreadLocalMode::GeneralDynamicTLSModel);
     }
     else
     {
         return new GlobalVariable(M, type, true,
-                                  GlobalValue::WeakAnyLinkage, initializer, name);
+                                  DEFAULT_LINKAGE, initializer, name);
     }
 }
 

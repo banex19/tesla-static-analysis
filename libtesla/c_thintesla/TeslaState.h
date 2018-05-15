@@ -79,9 +79,12 @@ typedef struct TeslaAutomaton
 
     TeslaThreadKey threadKey;
     struct TeslaAutomaton* next;
+
+    size_t numTotalAutomata;
+    size_t id;
 } TeslaAutomaton;
 
-_Static_assert(sizeof(TeslaAutomaton) == 120, "Invalid size");
+_Static_assert(sizeof(TeslaAutomaton) == 136, "Invalid size");
 _Static_assert(offsetof(TeslaAutomaton, numEvents) == 16, "Invalid size");
 _Static_assert(offsetof(TeslaAutomaton, next) == 112, "Invalid size");
 

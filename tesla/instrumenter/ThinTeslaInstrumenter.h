@@ -20,6 +20,7 @@ class ThinTeslaInstrumenter : public ThinTeslaEventVisitor, public llvm::ModuleP
             for (auto& assertion : builder.GetAssertions())
             {
                 assertions.push_back(*assertion);
+                assertions[assertions.size() - 1].globalId = assertions.size() - 1;
             }
         }
     }

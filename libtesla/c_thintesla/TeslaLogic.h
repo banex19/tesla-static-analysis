@@ -18,7 +18,8 @@
 /* Generic */
 void StartAutomaton(TeslaAutomaton* automaton);
 TeslaAutomaton* GenerateAutomaton(TeslaAutomaton* base);
-TeslaAutomaton* LateInitAutomaton(TeslaAutomaton* base, TeslaEvent* event);
+TeslaAutomaton* InitAutomaton(TeslaAutomaton* automaton);
+TeslaAutomaton* LateInitAutomaton(TeslaAutomaton* base, TeslaAutomaton* automaton, TeslaEvent* event);
 TeslaAutomaton* GenerateAndInitAutomaton(TeslaAutomaton* base);
 void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data);
 void UpdateAutomatonDeterministic(TeslaAutomaton* automaton, TeslaEvent* event);
@@ -43,6 +44,8 @@ TeslaAutomaton* GetThreadAutomaton(TeslaAutomaton* automaton);
 TeslaAutomaton* GetThreadAutomatonKey(TeslaThreadKey key, TeslaAutomaton* automaton);
 TeslaAutomaton* GetThreadAutomatonAndLast(TeslaThreadKey key, TeslaAutomaton* automaton, TeslaAutomaton** lastInChain);
 TeslaAutomaton* GetUnusedAutomaton(TeslaAutomaton* automaton);
+TeslaAutomaton* CreateAndCloneAutomaton(TeslaAutomaton* base);
+TeslaAutomaton* CloneAutomaton(TeslaAutomaton* automaton, TeslaAutomaton* base);
 void UpdateEventWithData(TeslaAutomaton* automaton, size_t eventId, void* data);
 
 void FreeAutomaton(TeslaAutomaton* automaton);

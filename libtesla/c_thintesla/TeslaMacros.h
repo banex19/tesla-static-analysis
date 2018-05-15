@@ -12,7 +12,7 @@
         automaton = GetThreadAutomaton(baseAutomaton);           \
         if (automaton == NULL || !automaton->state.isInit)                                   \
         {                                                        \
-            automaton = LateInitAutomaton(baseAutomaton, event); \
+            automaton = LateInitAutomaton(baseAutomaton, automaton, event); \
         }                                                        \
     } while (0)
 #else

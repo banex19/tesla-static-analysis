@@ -1,8 +1,9 @@
+
 #include "TeslaAssert.h"
 #include "TeslaLogic.h"
 #include "TeslaMalloc.h"
 #include "TeslaUtils.h"
-
+#include "KernelThreadAutomaton.h"
 #ifdef _KERNEL
 #include <sys/proc.h>
 #endif
@@ -78,7 +79,11 @@ TeslaAutomaton* GetThreadAutomaton(TeslaAutomaton* automaton)
     if (!automaton->flags.isThreadLocal)
         return automaton;
         
+#ifndef _KERNEL
     return GetThreadAutomatonKey(GetThreadKey(), automaton);
+#else
+    return GetThreadAutomatonKernel(automaton);
+#endif
 }
 
 void FreeAutomaton(TeslaAutomaton* automaton)
@@ -135,42 +140,9 @@ tryappendagain:
 
     if (automaton == NULL)
     {
-        automaton = TeslaMallocZero(sizeof(TeslaAutomaton));
-
+        automaton = CreateAndCloneAutomaton(base);
         if (automaton == NULL)
             return NULL;
-
-        // Copy static information.
-        automaton->numEvents = base->numEvents;
-        automaton->flags = base->flags;
-        automaton->events = base->events;
-        automaton->name = base->name;
-        automaton->threadKey = key;
-
-        if (!base->flags.isDeterministic)
-        {
-            automaton->eventStates = TeslaMallocZero(sizeof(TeslaEventState) * base->numEvents);
-
-            if (automaton->eventStates == NULL)
-            {
-                FreeAutomaton(automaton);
-                return NULL;
-            }
-
-            for (size_t i = 0; i < automaton->numEvents; ++i)
-            {
-                if (!automaton->events[i]->flags.isDeterministic)
-                {
-                    automaton->eventStates[i].matchData = TeslaMalloc(automaton->events[i]->matchDataSize * sizeof(size_t));
-
-                    if (automaton->eventStates[i].matchData == NULL)
-                    {
-                        FreeAutomaton(automaton);
-                        return NULL;
-                    }
-                }
-            }
-        }
     }
 
     // Atomically append to chain.
@@ -183,3 +155,49 @@ tryappendagain:
     return automaton;
 }
 
+TeslaAutomaton* CreateAndCloneAutomaton(TeslaAutomaton* base)
+{
+    TeslaAutomaton* automaton = TeslaMallocZero(sizeof(TeslaAutomaton));
+
+    return CloneAutomaton(automaton, base);
+}
+
+TeslaAutomaton* CloneAutomaton(TeslaAutomaton* automaton, TeslaAutomaton* base)
+{
+    if (automaton == NULL)
+        return NULL;
+
+    // Copy static information.
+    automaton->numEvents = base->numEvents;
+    automaton->flags = base->flags;
+    automaton->events = base->events;
+    automaton->name = base->name;
+    automaton->threadKey = GetThreadKey();
+
+    if (!base->flags.isDeterministic)
+    {
+        automaton->eventStates = TeslaMallocZero(sizeof(TeslaEventState) * base->numEvents);
+
+        if (automaton->eventStates == NULL)
+        {
+            FreeAutomaton(automaton);
+            return NULL;
+        }
+
+        for (size_t i = 0; i < automaton->numEvents; ++i)
+        {
+            if (!automaton->events[i]->flags.isDeterministic)
+            {
+                automaton->eventStates[i].matchData = TeslaMalloc(automaton->events[i]->matchDataSize * sizeof(size_t));
+
+                if (automaton->eventStates[i].matchData == NULL)
+                {
+                    FreeAutomaton(automaton);
+                    return NULL;
+                }
+            }
+        }
+    }
+
+    return automaton;
+}

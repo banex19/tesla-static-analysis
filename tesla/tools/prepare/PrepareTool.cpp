@@ -115,6 +115,11 @@ cl::opt<bool> OverwriteCache(
     cl::desc("Overwrite the current cache and build a new one from scratch"),
     cl::init(false));
 
+cl::opt<bool> TouchAll(
+    "t",
+    cl::desc("Update all files relying on automata instrumentation (both updated and old automata)"),
+    cl::init(false));
+
 cl::opt<bool> ThinTeslaSpecific(
     "thin-tesla",
     cl::desc("Use ThinTESLA-specific representation"),
@@ -456,7 +461,16 @@ int main(int argc, const char** argv)
     }
     for (auto& a : removedAutomata)
     {
-        updatedAutomata.insert(updatedAutomata.begin(), a.second.begin(), a.second.end());
+        updatedAutomata.insert(updatedAutomata.end(), a.second.begin(), a.second.end());
+    }
+
+    // Consider old automata as updated automata as well.
+    if (TouchAll)
+    {
+        for (auto& a : automataStillExisting)
+        {
+            updatedAutomata.insert(updatedAutomata.end(), a.second.begin(), a.second.end());
+        }
     }
 
     // Touch all files that contain either removed automata or new/updated automata.

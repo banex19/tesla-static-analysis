@@ -89,7 +89,6 @@ void VerifyAutomatonLinearHistory(TeslaAutomaton* automaton, size_t assertionEve
     while (i >= 1)
     {
         TeslaEvent* event = automaton->events[i];
-        TeslaEventState* state = &automaton->eventStates[i];
 
         if (event->flags.isOR)
         {

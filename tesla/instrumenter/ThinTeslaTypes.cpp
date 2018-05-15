@@ -80,7 +80,8 @@ void TeslaTypes::PopulateAutomatonTy(Module& M)
     AutomatonFlagsTy = GetStructType("TeslaAutomatonFlags", {Int8Ty}, M, TESLA_STRUCTS_PACKED);
     AutomatonStateTy = GetStructType("TeslaAutomatonState", {SizeTTy, EventPtrTy, EventPtrTy, Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int8PtrTy}, M, TESLA_STRUCTS_PACKED);
     AutomatonTy = GetStructType("TeslaAutomaton",
-                                {VoidPtrPtrTy, AutomatonFlagsTy, SizeTTy, VoidPtrTy, AutomatonStateTy, EventStateTy->getPointerTo(), VoidPtrTy, SizeTTy, VoidPtrTy},
+                                {VoidPtrPtrTy, AutomatonFlagsTy, SizeTTy, VoidPtrTy, AutomatonStateTy, EventStateTy->getPointerTo(), VoidPtrTy, SizeTTy, VoidPtrTy,
+                                 SizeTTy, SizeTTy},
                                 M, TESLA_STRUCTS_PACKED);
 
     DataLayout dataLayout{&M};
