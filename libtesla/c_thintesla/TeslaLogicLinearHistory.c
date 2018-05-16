@@ -98,6 +98,12 @@ void VerifyAutomatonLinearHistory(TeslaAutomaton* automaton, size_t assertionEve
             continue;
         }
 
+        if (event->flags.isDeterministic)
+        {
+            i--;
+            continue;
+        }
+
         if (current == invalid) // We have no more observations.
         {
             if (!event->flags.isOptional)

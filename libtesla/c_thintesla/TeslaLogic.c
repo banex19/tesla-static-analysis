@@ -238,6 +238,9 @@ void UpdateAutomatonDeterministicGeneric(TeslaAutomaton* automaton, TeslaEvent* 
 tryagain:
     if (automaton->state.currentEvent == event) // Double event is an error. Reset the automaton to the first event and retry.
     {
+#ifdef LINEAR_HISTORY
+        TeslaHistory_Clear(automaton->history);
+#endif
         DEBUG_ASSERT(event != automaton->events[0]);
         automaton->state.currentEvent = automaton->events[0];
         if (!triedAgain)
@@ -269,6 +272,9 @@ tryagain:
         // This was not a successor of the previous event. Reset the automaton to the first event and retry.
         if (!foundSuccessor)
         {
+#ifdef LINEAR_HISTORY
+            TeslaHistory_Clear(automaton->history);
+#endif
             DEBUG_ASSERT(event != automaton->events[0]);
             automaton->state.currentEvent = automaton->events[0];
             if (!triedAgain)
@@ -302,7 +308,7 @@ tryagain:
 
         automaton->state.lastEvent = automaton->state.currentEvent;
 #else
-        if (!automaton->state.reachedAssertion && !event->flags.isAssertion)
+        if (!automaton->state.reachedAssertion && event->flags.isOR && !event->flags.isAssertion)
             UpdateAutomatonLinearHistory(automaton, event, NULL);
 #endif
     }

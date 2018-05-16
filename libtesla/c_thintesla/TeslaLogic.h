@@ -13,7 +13,7 @@
 
 #define LATE_INIT
 
-//#define LINEAR_HISTORY
+#define LINEAR_HISTORY
 
 
 /* Generic and per-event tagging */
