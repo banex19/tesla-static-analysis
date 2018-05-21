@@ -66,10 +66,6 @@ const TeslaTemporalTag ONE = 1;
 
 void StartAutomaton(TeslaAutomaton* automaton)
 {
-#ifndef _KERNEL
-    // WASTE_TIME(1);
-#endif
-
 #ifndef LATE_INIT
     GenerateAndInitAutomaton(automaton);
 #endif
@@ -77,6 +73,10 @@ void StartAutomaton(TeslaAutomaton* automaton)
 
 TeslaAutomaton* InitAutomaton(TeslaAutomaton* automaton)
 {
+#ifndef _KERNEL
+    // WASTE_TIME(1);
+#endif
+
     if (automaton != NULL)
     {
 #ifndef LINEAR_HISTORY

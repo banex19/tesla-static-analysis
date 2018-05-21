@@ -13,8 +13,9 @@
 
 #define LATE_INIT
 
+#ifndef _KERNEL
 #define LINEAR_HISTORY
-
+#endif
 
 /* Generic and per-event tagging */
 void StartAutomaton(TeslaAutomaton* automaton);

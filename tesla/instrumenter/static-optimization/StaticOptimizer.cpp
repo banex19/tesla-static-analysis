@@ -9,6 +9,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include <algorithm>
 #include <llvm/Analysis/TargetLibraryInfo.h>
 using namespace llvm;
 
@@ -92,6 +93,12 @@ cl::opt<std::string>
     firstFunctionName("fn1", cl::Required);
 cl::opt<std::string> secondFunctionName("fn2", cl::Required);
 
+template <typename T>
+bool VectorContains(const std::vector<T>& vec, const T& elem)
+{
+    return std::find(vec.begin(), vec.end(), elem) != vec.end();
+}
+
 std::string StringFromVector(const std::vector<std::string>& vec,
                              const std::string& separator = ", ")
 {
@@ -127,6 +134,11 @@ std::string StringFromSet(const std::set<std::string>& s, const std::string& sep
     return str;
 }
 
+const std::string& Bounds(const std::string& s)
+{
+    return s;
+}
+
 namespace
 {
 struct InstrumentPass : public ModulePass
@@ -135,7 +147,7 @@ struct InstrumentPass : public ModulePass
     InstrumentPass() : ModulePass(ID) {}
 
     std::string bound;
-    std::set<std::string> events;
+    std::vector<std::string> events;
 
     virtual void getAnalysisUsage(AnalysisUsage& AU) const override
     {
@@ -312,12 +324,15 @@ struct InstrumentPass : public ModulePass
         for (auto& assertion : assertions)
         {
             events.clear();
+            std::set<std::string> eventSet;
 
             for (size_t i = 1; i < assertion.events.size() - 2; ++i)
             {
                 auto event = assertion.events[i];
-                events.insert(event->IsAssertion() ? "__tesla_inline_assertion" : event->GetInstrumentationTarget());
+                eventSet.insert(event->IsAssertion() ? "__tesla_inline_assertion" : event->GetInstrumentationTarget());
             }
+
+            events.insert(events.end(), eventSet.begin(), eventSet.end());
 
             for (size_t i = 1; i < assertion.events.size() - 2; ++i)
             {
@@ -362,9 +377,9 @@ struct InstrumentPass : public ModulePass
         const std::string& after = second->IsAssertion() ? "__tesla_inline_assertion" : second->GetInstrumentationTarget();
         const std::string& assertion = "__tesla_inline_assertion";
 
-        if (M.getFunction(firstFunctionName) == nullptr || M.getFunction(secondFunctionName) == nullptr)
+        if (M.getFunction(before) == nullptr || M.getFunction(after) == nullptr)
         {
-            llvm::errs() << "Invalid functions\n";
+            llvm::errs() << "Invalid functions: " << before << " and " << after << "\n";
             return false;
         }
 
@@ -697,6 +712,11 @@ struct InstrumentPass : public ModulePass
         {
             for (auto& pathToBefore : pathsToBefore)
             {
+                if (VectorContains(pathToBefore, after)) // After is the caller of before, it cannot be before.
+                    return false;
+                if (VectorContains(pathToAfter, before)) // Before is the caller of after, it is certainly before.
+                    return true;
+
                 int i = 0;
                 for (; i < pathToBefore.size() && i < pathToAfter.size(); ++i)
                 {
@@ -790,18 +810,121 @@ struct InstrumentPass : public ModulePass
         if (pathsToBefore.size() == 0 || pathsToAfter.size() == 0)
             return false;
 
-        for (auto& pathToBefore : pathsToBefore)
+        /*  for (auto& pathToBefore : pathsToBefore)
         {
             if (!CheckPath(M, graph, bound, before, after, pathToBefore))
+                return false; 
+                
+        }*/
+
+        // Check B < A
+        if (!DefinitelyCalledAfter(M, graph, bound, before, after))
+        {
+            return false;
+        }
+
+        std::vector<std::string> eventsBefore;
+        std::vector<std::string> eventsAfter;
+        for (auto& event : events)
+        {
+            if (event == before || event == after)
+                continue;
+
+            if (DefinitelyNeverCalled(M, graph, bound, event))
+                continue;
+
+            // Is this event definitely before or after?
+            bool isBefore = DefinitelyCalledAfter(M, graph, bound, event, before);
+            bool isAfter = DefinitelyCalledAfter(M, graph, bound, after, event);
+
+            assert(!(isBefore && isAfter)); // Cannot be both.
+
+            if (!isBefore && !isAfter) // We can't be certain.
                 return false;
+
+            if (isBefore)
+                eventsBefore.push_back(event);
+            else
+                eventsAfter.push_back(event);
+        }
+
+        // if (!AreCallsSequenced(M, graph, bound, eventsAfter))
+        // {
+        //     return false;
+        //   }
+
+        return true;
+    }
+
+    bool AreCallsSequenced(Module& M, CallGraph& graph, const std::string& bound, std::vector<std::string> functions)
+    {
+        // Ignore any function that is never called.
+        size_t numCalled = 0;
+        while (numCalled != functions.size())
+        {
+            numCalled = 0;
+            for (size_t i = 0; i < functions.size(); ++i)
+            {
+                if (DefinitelyNeverCalled(M, graph, bound, functions[i]))
+                {
+                    functions.erase(functions.begin() + i);
+                    break;
+                }
+
+                numCalled++;
+            }
+        }
+
+        while (functions.size() > 1)
+        {
+            size_t numFunctions = functions.size();
+            std::set<std::string> tries;
+            for (size_t i = 1; i < numFunctions; ++i)
+            {
+                if (!DefinitelyCalledAfter(M, graph, bound, functions[0], functions[i]))
+                {
+                    llvm::errs() << "(Sequencing) Functions " << functions[i] << " is not always after " << functions[0] << "\n";
+
+                    tries.insert(functions[0]);
+                    if (tries.size() == numFunctions) // We exhausted all possibilites.
+                    {
+                        return false;
+                    }
+
+                    size_t nextTryIndex = i;
+
+                    if (tries.find(functions[nextTryIndex]) != tries.end()) // We already tried this, find another function to try.
+                    {
+                        for (size_t k = i + 1; k < numFunctions; ++k)
+                        {
+                            if (tries.find(functions[k]) == tries.end())
+                            {
+                                nextTryIndex = k;
+                                break;
+                            }
+                        }
+
+                        assert(nextTryIndex != i);
+                    }
+
+                    // Retry.
+                    llvm::errs() << "(Sequencing) Trying " << functions[nextTryIndex] << "\n";
+                    std::iter_swap(functions.begin(), functions.begin() + nextTryIndex);
+                    i = 0;
+                    continue;
+                }
+            }
+
+            // Success. Try next subsequence.
+            functions.erase(functions.begin());
         }
 
         return true;
     }
 
-    bool
-    CheckPath(Module& M, CallGraph& graph, const std::string& bound, const std::string& before, const std::string& after,
-              std::vector<std::string>& pathToBefore)
+    // Within "bound", X < B < A < X.
+    bool CheckPath(Module& M, CallGraph& graph, const std::string& bound, const std::string& before, const std::string& after,
+                   std::vector<std::string>& pathToBefore)
     {
         bool hasRecursion = false;
         auto pathsToAfter = GetPathsTo(M, graph, bound, after, hasRecursion);
@@ -816,14 +939,22 @@ struct InstrumentPass : public ModulePass
                 happens = MayHappen(M, graph, before, after);
             }
 
-            if (happens) // Call definitely happens in the bounds of "before".
+            if (happens)
             {
+                // Call definitely happens in the bounds of "before".
+                // We don't have to worry about calls to "before" (assuming no recursion),
+                // but we must check that A < X < Y < ... for any X, Y, ... events.
+
+                std::vector<std::string> otherEvents;
                 for (auto& event : events) // Check that all other events cannot happen before "after".
                 {
                     if (event == after)
                         continue;
 
-                    bool definitelyAfter = DefinitelyCalledAfter(M, graph, before, after, event);
+                    otherEvents.push_back(event);
+
+                    bool definitelyAfter = DefinitelyNeverCalled(M, graph, Bounds(before), event) ||
+                                           DefinitelyCalledAfter(M, graph, Bounds(before), after, event);
                     if (!definitelyAfter)
                     {
                         llvm::errs() << "Event " << event << " is not definitely after " << after << " in " << before << "\n";
@@ -832,9 +963,17 @@ struct InstrumentPass : public ModulePass
                     }
                 }
 
+                // Try to find a linear temporal sequence X < Y < Z < ...
+                if (!AreCallsSequenced(M, graph, Bounds(before), otherEvents))
+                {
+                    llvm::errs() << "Not all calls are sequenced\n";
+                    return false;
+                }
+
                 return true;
             }
 
+            // Check that within "bound", X < B < A < X where X is any other event.
             std::string& lastCommonFunction = common[common.size() - 1];
             size_t firstDifferent = common.size();
 
@@ -845,8 +984,9 @@ struct InstrumentPass : public ModulePass
             if (happens && definitelyAfter)
             {
                 // Now check that it is not possible that any other event happens between "before" and "after".
-                for (auto& event : events)
+                for (size_t eventId = 0; eventId < events.size(); ++eventId)
                 {
+                    std::string& event = events[eventId];
                     if (event == after)
                         continue;
 

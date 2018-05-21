@@ -125,7 +125,7 @@ retrysearch:
         existing = GetUnusedAutomaton(base);
         if (existing != NULL)
         {
-            if (!__sync_bool_compare_and_swap(&(existing->threadKey), INVALID_THREAD_KEY, key))
+            if (existing->threadKey != INVALID_THREAD_KEY || !__sync_bool_compare_and_swap(&(existing->threadKey), INVALID_THREAD_KEY, key))
                 goto retrysearch; // Somebody was faster, try again.
 
             DEBUG_ASSERT(!existing->state.isActive);
