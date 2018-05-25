@@ -1,6 +1,6 @@
 #include "TeslaMalloc.h"
 
-#define TRACK_TOTAL_ALLOC
+//#define TRACK_TOTAL_ALLOC
 
 #ifdef TRACK_TOTAL_ALLOC
 size_t totalAllocated = 0;

@@ -26,7 +26,10 @@
     do                                                                      \
     {                                                                       \
         TeslaAutomaton* baseAutomaton = automaton;                          \
-        automaton = GetThreadAutomaton(baseAutomaton);                      \
+        if (automaton->flags.isThreadLocal)                                 \
+        {                                                                   \
+            automaton = GetThreadAutomaton(baseAutomaton);                  \
+        }                                                                   \
         if (automaton == NULL || !automaton->state.isInit)                  \
         {                                                                   \
             automaton = LateInitAutomaton(baseAutomaton, automaton, event); \
@@ -36,10 +39,11 @@
 #endif
 
 #ifndef LATE_INIT
-#define GET_THREAD_AUTOMATON(automaton, event)     \
-    do                                             \
-    {                                              \
-        automaton = GetThreadAutomaton(automaton); \
+#define GET_THREAD_AUTOMATON(automaton, event)         \
+    do                                                 \
+    {                                                  \
+        if (automaton->flags.isThreadLocal)            \
+            automaton = GetThreadAutomaton(automaton); \
     } while (0)
 #endif
 
@@ -52,10 +56,11 @@
         }                                                                                  \
     } while (0)
 
-#define GET_THREAD_AUTOMATON_AND_NULL(automaton)   \
-    do                                             \
-    {                                              \
-        automaton = GetThreadAutomaton(automaton); \
+#define GET_THREAD_AUTOMATON_AND_NULL(automaton)       \
+    do                                                 \
+    {                                                  \
+        if (automaton->flags.isThreadLocal)            \
+            automaton = GetThreadAutomaton(automaton); \
     } while (0)
 
 #define GET_THREAD_AUTOMATON_IF_ENABLED(automaton, event) \

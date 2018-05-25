@@ -100,15 +100,10 @@ void TA_Init(TeslaAutomaton* automaton)
         automaton->state.isCorrect = allCorrect;
     }
 
-    for (size_t i = 0; i < automaton->numEvents; ++i)
-    {
-        //    printf("[Init] Store for event %d: %p\n", automaton->events[i]->id, automaton->events[i]->state.store);
-    }
-
-    if (!automaton->state.isCorrect)
+  /*  if (!automaton->state.isCorrect)
     {
         TeslaWarning("Automaton may be incorrect");
-    }
+    } */
 }
 
 void TA_InitLinearHistory(TeslaAutomaton* automaton)

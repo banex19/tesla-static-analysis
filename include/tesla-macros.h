@@ -41,7 +41,7 @@ __BEGIN_DECLS
  * @{
  */
 
-#include <tesla.h>
+#include "tesla.h"
 
 /*
  * Macros to make TESLA assertions a little easier to read.

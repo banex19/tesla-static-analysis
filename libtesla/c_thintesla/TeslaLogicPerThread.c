@@ -1,9 +1,9 @@
 
+#include "KernelThreadAutomaton.h"
 #include "TeslaAssert.h"
 #include "TeslaLogic.h"
 #include "TeslaMalloc.h"
 #include "TeslaUtils.h"
-#include "KernelThreadAutomaton.h"
 #ifdef _KERNEL
 #include <sys/proc.h>
 #endif
@@ -67,8 +67,7 @@ TeslaAutomaton* GetThreadAutomatonAndLast(TeslaThreadKey key, TeslaAutomaton* au
 
 TeslaAutomaton* GetThreadAutomatonKey(TeslaThreadKey key, TeslaAutomaton* automaton)
 {
-    if (!automaton->flags.isThreadLocal)
-        return automaton;
+    assert(automaton->flags.isThreadLocal);
 
     TeslaAutomaton* last = NULL;
     return GetThreadAutomatonAndLast(key, automaton, &last);
@@ -76,9 +75,8 @@ TeslaAutomaton* GetThreadAutomatonKey(TeslaThreadKey key, TeslaAutomaton* automa
 
 TeslaAutomaton* GetThreadAutomaton(TeslaAutomaton* automaton)
 {
-    if (!automaton->flags.isThreadLocal)
-        return automaton;
-        
+    assert(automaton->flags.isThreadLocal);
+
 #ifndef _KERNEL
     return GetThreadAutomatonKey(GetThreadKey(), automaton);
 #else
