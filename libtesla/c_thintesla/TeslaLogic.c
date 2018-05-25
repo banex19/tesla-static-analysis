@@ -117,7 +117,7 @@ TeslaAutomaton* GenerateAutomaton(TeslaAutomaton* base)
         }
     }
 
-    DEBUG_ASSERT(!automaton->state.isActive);
+    DEBUG_ASSERT(automaton != NULL && !automaton->state.isActive);
     DEBUG_ASSERT(automaton->numEvents > 0);
 
     return automaton;
@@ -130,11 +130,11 @@ TeslaAutomaton* LateInitAutomaton(TeslaAutomaton* base, TeslaAutomaton* automato
         return NULL;
 
     if (automaton == NULL)
-        return GenerateAndInitAutomaton(base);
+        automaton = GenerateAndInitAutomaton(base);
     else if (!automaton->state.isInit)
-        return InitAutomaton(automaton);
+        automaton = InitAutomaton(automaton);
 
-    assert(false);
+    return automaton;
 #endif
 }
 
@@ -239,7 +239,8 @@ tryagain:
     if (automaton->state.currentEvent == event) // Double event is an error. Reset the automaton to the first event and retry.
     {
 #ifdef LINEAR_HISTORY
-        TeslaHistory_Clear(automaton->history);
+        if (automaton->history != NULL)
+            TeslaHistory_Clear(automaton->history);
 #endif
         DEBUG_ASSERT(event != automaton->events[0]);
         automaton->state.currentEvent = automaton->events[0];
@@ -273,7 +274,8 @@ tryagain:
         if (!foundSuccessor)
         {
 #ifdef LINEAR_HISTORY
-            TeslaHistory_Clear(automaton->history);
+            if (automaton->history != NULL)
+                TeslaHistory_Clear(automaton->history);
 #endif
             DEBUG_ASSERT(event != automaton->events[0]);
             automaton->state.currentEvent = automaton->events[0];
@@ -515,7 +517,7 @@ void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event)
         return;
 
 #ifdef LATE_INIT
-    if (automaton->state.hasFailed)
+    if (!automaton->flags.isLinked && automaton->state.hasFailed)
         TeslaAssertionFailMessage(automaton, automaton->state.failReason);
 #endif
 
@@ -526,15 +528,18 @@ void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event)
         UpdateAutomatonDeterministic(automaton, event);
 
         // If this automaton is not in a final event, the assertion has failed.
-        if (!automaton->state.currentEvent->flags.isEnd)
+        if (!automaton->flags.isLinked)
         {
-            TeslaAssertionFailMessage(automaton, "Automaton has reached the final temporal bound but is not in a final state");
-        }
-        else
-        {
+            if (!automaton->state.currentEvent->flags.isEnd)
+            {
+                TeslaAssertionFailMessage(automaton, "Automaton has reached the final temporal bound but is not in a final state");
+            }
+            else
+            {
 #ifdef GUIDELINE_MODE // This should never happen in guideline mode. All succesfull automata should have been catched already.
-            assert(false && "Assertion passed at EndAutomaton() in guideline mode");
+                assert(false && "Assertion passed at EndAutomaton() in guideline mode");
 #endif
+            }
         }
     }
 
@@ -548,6 +553,7 @@ void EndLinkedAutomata(TeslaAutomaton** automata, size_t numAutomata)
 {
     // Only one automaton should succeed in XOR mode.
     bool oneSucceeded = false;
+    bool oneActive = false;
 
     for (size_t i = 0; i < numAutomata; ++i)
     {
@@ -555,29 +561,39 @@ void EndLinkedAutomata(TeslaAutomaton** automata, size_t numAutomata)
 
         GET_THREAD_AUTOMATON_AND_NULL(automaton);
 
-        if (automaton == NULL || !automaton->state.isActive) // This automaton failed.
-        {
-            continue;
-        }
-        else if (automaton->state.hasFailed)
-        {
-#ifdef LATE_INIT
-            continue;
+        if (automaton == NULL || !automaton->state.isInit ||
+#ifndef GUIDELINE_MODE // In guideline mode automata can be disabled prematurely.
+            !automaton->state.isActive ||
 #endif
+            automaton->state.hasFailed) // This automaton failed.
+        {
+            TA_Reset(automaton);
+            continue;
         }
 
+        oneActive = true;
+
+#ifndef GUIDELINE_MODE
         if (automaton->state.currentEvent->flags.isEnd) // This automaton succeeded.
+#else
+        if (automaton->state.currentEvent->flags.isFinal) // This automaton succeeded.
+#endif
         {
             if (xorMode && oneSucceeded) // More than one succeeded in XOR mode.
-                TeslaAssertionFail(automaton);
+                TeslaAssertionFailMessage(automaton, "More than one linked automata succeeded in XOR mode");
 
             oneSucceeded = true;
-            TA_Reset(automaton);
         }
+        else
+        {
+            //printf("Automaton %p current event %p %d\n", automaton, automaton->state.currentEvent, automaton->state.currentEvent->id);
+        }
+
+        TA_Reset(automaton);
     }
 
-    if (!oneSucceeded)
-        TeslaAssertionFail(automata[0]);
+    if (oneActive && !oneSucceeded)
+        TeslaAssertionFailMessage(automata[0], "No linked automata succeeded");
 }
 
 void UpdateEventWithData(TeslaAutomaton* automaton, size_t eventId, void* data)

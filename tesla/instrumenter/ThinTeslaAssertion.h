@@ -373,7 +373,8 @@ class ThinTeslaAssertionBuilder
     void ConvertBoolean(const tesla::BooleanExpr& exp);
     void ConvertAssertionSite(const tesla::AssertionSite& site);
     void ConvertFunction(const tesla::Expression& fun);
-    bool CheckBooleanSubexpressions(const tesla::BooleanExpr& exp);
+    std::vector<const tesla::Expression*> GetTopLevelAutomata();
+    void GetTopLevelAutomataRec(const tesla::BooleanExpr& exp, std::vector<const tesla::Expression*>& automata);
 
     void AddArgumentToParametricEvent(std::shared_ptr<ThinTeslaParametricFunction> event, const tesla::Argument& arg, bool returnValue = false);
 

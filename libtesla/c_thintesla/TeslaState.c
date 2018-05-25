@@ -31,7 +31,7 @@ void TA_Reset(TeslaAutomaton* automaton)
             TeslaHistory_Clear(automaton->history);
     }
 
-    //   printf("[%lu] Resetting automaton %p\n",  automaton->threadKey, automaton);
+    //printf("[%lu] Resetting automaton %p\n",  automaton->threadKey, automaton);
 
     // Signal this automaton can be reused.
     automaton->state.isInit = false;

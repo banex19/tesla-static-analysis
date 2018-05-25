@@ -23,8 +23,18 @@ void ThinTeslaAssertionBuilder::BuildAssertion()
 {
     isThreadLocal = desc->context() == tesla::AutomatonDescription_Context_ThreadLocal;
 
+    auto automata = GetTopLevelAutomata();
+    if (automata.size() > 1)
+        multipleAutomata = true;
+
     entryBound = &automaton->beginning();
-    ConvertExp(desc->expression());
+
+    for (auto& automaton : automata)
+    {
+        AddAssertion();
+        ConvertExp(*automaton);
+    }
+
     exitBound = &automaton->end();
 }
 
@@ -81,7 +91,7 @@ void ThinTeslaAssertionBuilder::LinkEvents()
     }
 }
 
-void ThinTeslaAssertionBuilder::ConvertExp(const Expression& exp)
+void ThinTeslaAssertionBuilder::ConvertExp(const tesla::Expression& exp)
 {
     if (exp.type() == tesla::Expression_Type_NULL_EXPR)
     {
@@ -112,39 +122,53 @@ void ThinTeslaAssertionBuilder::ConvertExp(const Expression& exp)
     }
 }
 
-bool ThinTeslaAssertionBuilder::CheckBooleanSubexpressions(const BooleanExpr& exp)
+std::vector<const tesla::Expression*> ThinTeslaAssertionBuilder::GetTopLevelAutomata()
 {
-    const auto& exps = exp.expression();
-    if (exps.size() < 2)
-        return false;
+    std::vector<const tesla::Expression*> automata;
 
-    bool anyIsSequence = false;
-    for (const auto& exp : exps)
+    bool multiAutomata = false;
+    if (desc->expression().type() == Expression_Type_BOOLEAN_EXPR)
     {
-        if (exp.type() == tesla::Expression_Type_SEQUENCE)
-        {
-            anyIsSequence = true;
-            break;
-        }
-    }
-
-    if (anyIsSequence) // If at least one subexpression is a sequence, then all must be sequences and this must be the top expression.
-    {
-        if (desc->expression().type() != Expression_Type_BOOLEAN_EXPR || desc->expression().booleanexpr() != exp)
-        {
-            return false;
-        }
-
+        const auto& exp = desc->expression().booleanexpr();
+        const auto& exps = exp.expression();
         for (const auto& exp : exps)
         {
-            if (exp.type() != tesla::Expression_Type_SEQUENCE)
-                return false;
+            if (exp.type() == tesla::Expression_Type_SEQUENCE)
+            {
+                multiAutomata = true;
+                break;
+            }
         }
 
-        multipleAutomata = true;
+        GetTopLevelAutomataRec(exp, automata);
     }
 
-    return true;
+    if (!multiAutomata)
+    {
+        automata.push_back(&desc->expression());
+    }
+
+    return automata;
+}
+
+void ThinTeslaAssertionBuilder::GetTopLevelAutomataRec(const BooleanExpr& exp, std::vector<const tesla::Expression*>& automata)
+{
+    const auto& exps = exp.expression();
+    for (const auto& sub : exps)
+    {
+        if (sub.type() == tesla::Expression_Type_SEQUENCE)
+        {
+            automata.push_back(&sub);
+        }
+        else if (sub.type() == tesla::Expression_Type_BOOLEAN_EXPR)
+        {
+            GetTopLevelAutomataRec(sub.booleanexpr(), automata);
+        }
+        else
+        {
+            assert(false && "Expected top-level automaton");
+        }
+    }
 }
 
 void ThinTeslaAssertionBuilder::ConvertBoolean(const BooleanExpr& exp)
@@ -155,19 +179,11 @@ void ThinTeslaAssertionBuilder::ConvertBoolean(const BooleanExpr& exp)
 
         currentlyInOR = true;
 
-        if (!CheckBooleanSubexpressions(exp))
-        {
-            assert(false && "Boolean expression of invalid sub expressions");
-        }
-
-        if (multipleAutomata)
-            currentlyInOR = false;
-
         for (const auto& subExp : exp.expression())
         {
-            if (multipleAutomata)
+            if (subExp.type() == tesla::Expression_Type_SEQUENCE)
             {
-                AddAssertion();
+                assert(false && "Cannot have a sequence inside a sequence");
             }
 
             ConvertExp(subExp);
@@ -193,7 +209,7 @@ void ThinTeslaAssertionBuilder::ConvertAssertionSite(const AssertionSite& site)
     assertionCounter = location.counter();
 }
 
-void ThinTeslaAssertionBuilder::ConvertFunction(const Expression& fun)
+void ThinTeslaAssertionBuilder::ConvertFunction(const tesla::Expression& fun)
 {
     const FunctionEvent& function = fun.function();
 
