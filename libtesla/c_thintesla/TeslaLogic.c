@@ -151,10 +151,6 @@ void UpdateAutomaton(TeslaAutomaton* automaton, TeslaEvent* event, void* data)
     DebugEvent(event);
     DebugMatchArray(automaton, event);
 #endif
-
-    if (!automaton->state.isActive)
-        return;
-
     TeslaEventState* state = &automaton->eventStates[event->id];
 
     if (automaton->state.reachedAssertion) // We've already reached the assertion, we have more information now.
@@ -336,12 +332,23 @@ tryagain:
         }
 
         automaton->state.reachedAssertion = true;
+
+#ifdef _KERNEL
+        if (!automaton->flags.isLinked)
+            IncreaseKernelActiveCount();
+#endif
     }
 
 #ifdef GUIDELINE_MODE
     if (foundSuccessor && event->flags.isFinal) // In guideline mode, this automaton has just succesfully completed. Disable it.
     {
         automaton->state.isActive = false;
+#ifdef _KERNEL
+        if (!automaton->flags.isLinked)
+        {
+            DecreaseKernelActiveCount();
+        }
+#endif
     }
 #endif
 }
@@ -525,26 +532,47 @@ void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event)
     {
         DEBUG_ASSERT(automaton->flags.isLinked || automaton->state.isActive);
 
+#ifndef GUIDELINE_MODE
         UpdateAutomatonDeterministic(automaton, event);
-
-        // If this automaton is not in a final event, the assertion has failed.
+#endif // If this automaton is not in a final event, the assertion has failed.
         if (!automaton->flags.isLinked)
         {
+#ifndef GUIDELINE_MODE
             if (!automaton->state.currentEvent->flags.isEnd)
-            {
-                TeslaAssertionFailMessage(automaton, "Automaton has reached the final temporal bound but is not in a final state");
-            }
-            else
-            {
-#ifdef GUIDELINE_MODE // This should never happen in guideline mode. All succesfull automata should have been catched already.
-                assert(false && "Assertion passed at EndAutomaton() in guideline mode");
 #endif
-            }
+                if (!automaton->state.currentEvent->flags.isFinal)
+                {
+                    TeslaAssertionFailMessage(automaton, "Automaton has reached the final temporal bound but is not in a final state");
+                }
+                else
+                {
+#ifdef GUIDELINE_MODE // This should never happen in guideline mode. All succesfull automata should have been catched already.
+                    assert(false && "Assertion passed at EndAutomaton() in guideline mode");
+#endif
+                }
         }
     }
 
     if (!automaton->flags.isLinked) // Linked automata will be reset later, not now.
         TA_Reset(automaton);
+
+#ifdef _KERNEL
+    if (GetKernelActiveCount() > 0)
+    {
+        // panic("Some automaton is active\n");
+    }
+#endif
+}
+
+void EndAllAutomataKernel()
+{
+#ifdef _KERNEL
+    size_t active = GetKernelActiveCount();
+    if (active > 0)
+    {
+        TeslaAssertionFailMessage(NULL, "Some automaton has failed");
+    }
+#endif
 }
 
 const bool xorMode = false;
@@ -567,7 +595,10 @@ void EndLinkedAutomata(TeslaAutomaton** automata, size_t numAutomata)
 #endif
             automaton->state.hasFailed) // This automaton failed.
         {
-            TA_Reset(automaton);
+#ifndef _KERNEL
+            if (automaton != NULL)
+                TA_Reset(automaton);
+#endif
             continue;
         }
 
@@ -589,7 +620,9 @@ void EndLinkedAutomata(TeslaAutomaton** automata, size_t numAutomata)
             //printf("Automaton %p current event %p %d\n", automaton, automaton->state.currentEvent, automaton->state.currentEvent->id);
         }
 
+#ifndef _KERNEL
         TA_Reset(automaton);
+#endif
     }
 
     if (oneActive && !oneSucceeded)

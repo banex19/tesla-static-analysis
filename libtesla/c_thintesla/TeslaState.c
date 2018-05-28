@@ -1,6 +1,10 @@
 #include "TeslaState.h"
 #include "TeslaAssert.h"
 
+#ifdef _KERNEL
+#include <sys/proc.h>
+#endif
+
 void TA_Reset(TeslaAutomaton* automaton)
 {
     memset(&automaton->state, 0, sizeof(automaton->state));
@@ -54,6 +58,11 @@ void TA_InitCommon(TeslaAutomaton* automaton)
     // We assume that this automaton will return a correct response for now.
     // This can change whenever, for example, an allocation fails.
     automaton->state.isCorrect = true;
+
+// Init tag.
+#ifdef _KERNEL
+    automaton->state.initTag = curthread->automata->initTag;
+#endif
 }
 
 void TA_Init(TeslaAutomaton* automaton)
@@ -100,7 +109,7 @@ void TA_Init(TeslaAutomaton* automaton)
         automaton->state.isCorrect = allCorrect;
     }
 
-  /*  if (!automaton->state.isCorrect)
+    /*  if (!automaton->state.isCorrect)
     {
         TeslaWarning("Automaton may be incorrect");
     } */

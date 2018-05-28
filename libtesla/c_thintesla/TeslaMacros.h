@@ -4,22 +4,28 @@
 #error "Do not include TeslaMacros.h from anywhere but TeslaLogic.h"
 #endif
 
+#ifdef _KERNEL
+#include <sys/proc.h>
+#endif
+
 #ifdef LATE_INIT
 #ifdef _KERNEL
-#define GET_THREAD_AUTOMATON(automaton, event)                                                                  \
-    do                                                                                                          \
-    {                                                                                                           \
-        TeslaAutomaton* baseAutomaton = automaton;                                                              \
-        if (!DoesKernelAutomatonExist(baseAutomaton) && (!event->flags.isInitial && !event->flags.isAssertion)) \
-            automaton = NULL;                                                                                   \
-        else                                                                                                    \
-        {                                                                                                       \
-            automaton = GetThreadAutomaton(baseAutomaton);                                                      \
-            if (automaton == NULL || !automaton->state.isInit)                                                  \
-            {                                                                                                   \
-                automaton = LateInitAutomaton(baseAutomaton, automaton, event);                                 \
-            }                                                                                                   \
-        }                                                                                                       \
+#define GET_THREAD_AUTOMATON(automaton, event)                                                                               \
+    do                                                                                                                       \
+    {                                                                                                                        \
+        TeslaAutomaton* baseAutomaton = automaton;                                                                           \
+        if (!DoesKernelAutomatonExist(baseAutomaton) && (!event->flags.isInitial && !event->flags.isAssertion))              \
+            automaton = NULL;                                                                                                \
+        else                                                                                                                 \
+        {                                                                                                                    \
+            automaton = GetThreadAutomaton(baseAutomaton);                                                                   \
+            if (automaton != NULL && curthread->automata != NULL && automaton->state.initTag < curthread->automata->initTag) \
+                TA_Reset(automaton);                                                                                         \
+            if (automaton == NULL || !automaton->state.isInit)                                                               \
+            {                                                                                                                \
+                automaton = LateInitAutomaton(baseAutomaton, automaton, event);                                              \
+            }                                                                                                                \
+        }                                                                                                                    \
     } while (0)
 #else
 #define GET_THREAD_AUTOMATON(automaton, event)                              \

@@ -78,7 +78,7 @@ void TeslaTypes::PopulateAutomatonTy(Module& M)
     PointerType* EventPtrTy = PointerType::getUnqual(EventTy);
 
     AutomatonFlagsTy = GetStructType("TeslaAutomatonFlags", {Int8Ty}, M, TESLA_STRUCTS_PACKED);
-    AutomatonStateTy = GetStructType("TeslaAutomatonState", {SizeTTy, EventPtrTy, EventPtrTy, Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int8PtrTy}, M, TESLA_STRUCTS_PACKED);
+    AutomatonStateTy = GetStructType("TeslaAutomatonState", {SizeTTy, EventPtrTy, EventPtrTy, Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int8PtrTy, SizeTTy}, M, TESLA_STRUCTS_PACKED);
     AutomatonTy = GetStructType("TeslaAutomaton",
                                 {VoidPtrPtrTy, AutomatonFlagsTy, SizeTTy, VoidPtrTy, AutomatonStateTy, EventStateTy->getPointerTo(), VoidPtrTy, SizeTTy, VoidPtrTy,
                                  SizeTTy, SizeTTy},
@@ -126,6 +126,18 @@ Function* TeslaTypes::GetEndLinkedAutomata(Module& M)
     Type* VoidPtrPtrTy = GetVoidPtrPtrTy(C);
     return (Function*)M.getOrInsertFunction("EndLinkedAutomata", FunctionType::get(Type::getVoidTy(C),
                                                                                    VoidPtrPtrTy, GetSizeTType(C)));
+}
+
+Function* TeslaTypes::GetEndAllAutomataKernel(Module& M)
+{
+    auto& C = M.getContext();
+    return (Function*)M.getOrInsertFunction("EndAllAutomataKernel", FunctionType::get(Type::getVoidTy(C), false));
+}
+
+Function* TeslaTypes::GetIncrementInitTag(Module& M)
+{
+    auto& C = M.getContext();
+    return (Function*)M.getOrInsertFunction("IncrementInitTag", FunctionType::get(Type::getVoidTy(C), false));
 }
 
 Function* TeslaTypes::GetUpdateEventWithData(Module& M)

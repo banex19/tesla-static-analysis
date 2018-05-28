@@ -23,6 +23,19 @@ class ThinTeslaInstrumenter : public ThinTeslaEventVisitor, public llvm::ModuleP
                 assertions[assertions.size() - 1].globalId = assertions.size() - 1;
             }
         }
+
+        temporalBound = "";
+        for (auto& assertion : assertions)
+        {
+            if (temporalBound == "")
+                temporalBound = assertion.events[0]->GetInstrumentationTarget();
+
+            if (assertion.events[0]->GetInstrumentationTarget() != temporalBound)
+            {
+                assertionsShareTemporalBounds = false;
+                break;
+            }
+        }
     }
 
     virtual ~ThinTeslaInstrumenter() {}
@@ -74,6 +87,11 @@ class ThinTeslaInstrumenter : public ThinTeslaEventVisitor, public llvm::ModuleP
 
     std::vector<ThinTeslaAssertion> assertions;
     std::set<std::string> multipleInstrumentedFunctions;
+
+    bool assertionsShareTemporalBounds = true;
+    std::string temporalBound = "";
+    bool instrumentedEnd = false;
+    bool instrumentedStart = false;
 
     static char ID;
 };

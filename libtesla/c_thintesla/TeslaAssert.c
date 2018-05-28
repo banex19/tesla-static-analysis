@@ -28,16 +28,18 @@ void TeslaAssertionFailMessage(TeslaAutomaton* automaton, const char* message)
 #else
     if (message != NULL && strcmp(message, "") != 0)
     {
-        printf("TESLA ASSERTION FAILED - Automaton %s\nReason: %s\n", automaton->name, message);
+       // printf("TESLA ASSERTION FAILED - Automaton %s\nReason: %s\n", automaton->name, message);
     }
     else
     {
-        printf("TESLA ASSERTION FAILED - Automaton %s\n", automaton->name);
+       // printf("TESLA ASSERTION FAILED - Automaton %s\n", automaton->name);
     }
 #endif
 
     TeslaPanic();
 }
+
+#define NO_PANIC
 
 void TeslaPanic()
 {
@@ -46,6 +48,8 @@ void TeslaPanic()
 
     assert(false && "TESLA panic");
 #else
+#ifndef NO_PANIC
     panic("TESLA assertion failed");
+#endif
 #endif
 }

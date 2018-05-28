@@ -31,6 +31,7 @@ bool VerifyORBlock(TeslaAutomaton* automaton, size_t* i, TeslaTemporalTag* lower
 void VerifyAfterAssertion(TeslaAutomaton* automaton, size_t i, TeslaTemporalTag lowerBound, TeslaTemporalTag upperBound);
 void EndAutomaton(TeslaAutomaton* automaton, TeslaEvent* event);
 void EndLinkedAutomata(TeslaAutomaton** automata, size_t numAutomata);
+void EndAllAutomataKernel(void);
 
 /* Linear history */
 size_t GetFirstOREventFromLastInBlock(TeslaAutomaton* automaton, size_t lastOREvent);

@@ -93,6 +93,7 @@ bool ThinTeslaInstrumenter::runOnModule(llvm::Module& M)
     {
         GlobalVariable* automaton = GetAutomatonGlobal(M, *assertion);
 
+      //  llvm::errs() << "Instrumenting assertion " << GetAutomatonID(*assertion) << "\n";
         Instrument(M, *assertion);
         instrumented = true;
     }
@@ -522,6 +523,7 @@ void ThinTeslaInstrumenter::InstrumentInstruction(llvm::Module& M, llvm::Instruc
 {
     Function* updateAutomaton = TeslaTypes::GetUpdateAutomatonDeterministic(M);
     Function* startAutomaton = TeslaTypes::GetStartAutomaton(M);
+    Function* incrementInitTag = TeslaTypes::GetIncrementInitTag(M);
 
     GlobalVariable* global = GetEventGlobal(M, assertion, event);
 
@@ -542,6 +544,12 @@ void ThinTeslaInstrumenter::InstrumentInstruction(llvm::Module& M, llvm::Instruc
         // If we're doing late initialization, skip this.
 #ifndef LATE_INIT
         builder.CreateCall(startAutomaton, {GetAutomatonGlobal(M, assertion)});
+#else
+        if (!instrumentedStart && (assertionsShareTemporalBounds && temporalBound == "amd64_syscall")) // For the kernel.
+        {
+            builder.CreateCall(incrementInitTag);
+            instrumentedStart = true;
+        }
 #endif
     }
     else if (event.IsEnd())
@@ -644,9 +652,19 @@ void ThinTeslaInstrumenter::InstrumentEveryExit(llvm::Module& M, Function* funct
 void ThinTeslaInstrumenter::InstrumentEndAutomaton(llvm::Module& M, llvm::IRBuilder<>& builder, ThinTeslaAssertion& assertion, ThinTeslaFunction& event)
 {
     Function* endAutomaton = TeslaTypes::GetEndAutomaton(M);
+    Function* endAllAutomataKernel = TeslaTypes::GetEndAllAutomataKernel(M);
     Function* endLinkedAutomata = TeslaTypes::GetEndLinkedAutomata(M);
 
-    builder.CreateCall(endAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event)});
+    if (assertionsShareTemporalBounds && temporalBound == "amd64_syscall")
+    {
+        if (!instrumentedEnd)
+        {
+            builder.CreateCall(endAllAutomataKernel, {});
+            instrumentedEnd = true;
+        }
+    }
+    else
+        builder.CreateCall(endAutomaton, {GetAutomatonGlobal(M, assertion), GetEventGlobal(M, assertion, event)});
 
     if (assertion.IsLinked() && assertion.IsLinkMaster())
     {
@@ -807,7 +825,8 @@ GlobalVariable* ThinTeslaInstrumenter::GetAutomatonGlobal(llvm::Module& M, ThinT
                                           TeslaTypes::GetBoolValue(C, 0),
                                           TeslaTypes::GetBoolValue(C, 0),
                                           TeslaTypes::GetBoolValue(C, 0),
-                                          ConstantPointerNull::get(Int8PtrTy));
+                                          ConstantPointerNull::get(Int8PtrTy),
+                                          TeslaTypes::GetSizeT(C, 0));
 
     Constant* init = ConstantStruct::get(TeslaTypes::AutomatonTy, eventsArrayPtr, cFlags,
                                          TeslaTypes::GetSizeT(C, assertion.events.size()),

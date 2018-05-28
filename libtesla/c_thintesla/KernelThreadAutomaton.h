@@ -11,4 +11,11 @@ bool CloneAutomatonToKernel(struct TeslaAutomaton* base, struct TeslaAutomaton* 
 bool DoesKernelAutomatonExist(struct TeslaAutomaton* base);
 struct TeslaAutomaton* GetThreadAutomatonKernel(struct TeslaAutomaton* base);
 
+void DecreaseKernelActiveCount(void);
+void IncreaseKernelActiveCount(void);
+size_t GetKernelActiveCount(void);
+void ResetAllAutomata(void);
+
+void IncrementInitTag(void);
+
 #endif

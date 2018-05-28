@@ -73,6 +73,8 @@ class TeslaTypes
     static Function* GetStartAutomaton(Module& M);
     static Function* GetEndAutomaton(Module& M);
     static Function* GetEndLinkedAutomata(Module& M);
+    static Function* GetEndAllAutomataKernel(Module& M);
+    static Function* GetIncrementInitTag(Module& M);
     static Function* GetUpdateEventWithData(Module& M);
 
     static StructType* GetStructType(StringRef name, ArrayRef<Type*> fields, Module& M, bool packed = true);
