@@ -1,5 +1,5 @@
 # ThinTESLA: A low overhead temporal assertions framework
-This is a completely new version of TESLA (see below), which addresses the performance concerns and the shortcomings of its predecessor.
+This is a completely new version of TESLA (see below), which addresses the performance concerns and the shortcomings of its predecessor. Please have a look at the dissertation describing the major changes and improvements here: https://github.com/banex19/thin-tesla/blob/master/ThinTESLA_Dissertation.pdf
 
 # TESLA: Temporally Enhanced Security Logic Assertions
 
